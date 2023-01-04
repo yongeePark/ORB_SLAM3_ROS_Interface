@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<launch>
+    <arg name="path_to_orb" default="/home/usrg/packages/ORB_SLAM3_ROS_Interface/"/>
+    <arg name="path_to_vocabulary" default="Vocabulary/ORBvoc.txt"/>
+    <arg name="path_to_settings" default="Examples/RGB-D/RealSense_D435i.yaml"/>
+
+    <node name="RGBD" pkg="ORB_SLAM3" type="RGBD" output="screen"
+    args="$(arg path_to_orb)$(arg path_to_vocabulary) $(arg path_to_orb)$(arg path_to_settings)" >
+      <remap from="/camera/depth_registered/image_raw" to="/camera/depth/image_rect_raw"/>
+      <remap from="/camera/rgb/image_raw" to="/camera/color/image_raw"/>
+      <remap from="imu" to="/camera/imu"/>
+      
+    </node>
+</launch>

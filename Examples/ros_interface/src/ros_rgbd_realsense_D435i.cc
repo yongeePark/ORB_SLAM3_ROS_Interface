@@ -32,6 +32,8 @@
 #include <librealsense2/rs.hpp>
 #include "librealsense2/rsutil.h"
 
+#include <ros/ros.h>
+#include <geometry_msgs/PoseStamped.h>
 
 #include <System.h>
 
@@ -100,13 +102,26 @@ static rs2_option get_sensor_option(const rs2::sensor& sensor)
 
 int main(int argc, char **argv) {
 
-    if (argc < 3 || argc > 4) {
+    // if (argc < 3 || argc > 4) {
+    if (argc < 3 ) { 
         cerr << endl
+             << "Number of arguments : " << argc << endl
+             << argv[0] << endl
+             << argv[1] << endl 
+             << argv[2] << endl
+             << argv[3] << endl
+             << argv[4] << endl
+             << "End of arguments" <<endl
              << "Usage: ./mono_inertial_realsense_D435i path_to_vocabulary path_to_settings (trajectory_file_name)"
              << endl;
         return 1;
     }
+    // ros
 
+    ros::init(argc, argv,"ros_rgbd_realsense");
+    ros::NodeHandle nh;
+    ros::Publisher pose_pub = nh.advertise<geometry_msgs::PoseStamped>("orb_pose",1);
+    
     string file_name;
     bool bFileName = false;
 
@@ -316,7 +331,26 @@ int main(int argc, char **argv) {
     double t_track = 0.f;
     rs2::frameset fs;
 
-    while (!SLAM.isShutDown())
+    Sophus::SE3f output;
+    
+    // Eigen::Matrix4f current_camera_pose, current_base_pose;
+    Eigen::Matrix4f changer;
+    /*
+    changer << 0.0f, -1.0f,  0.0f,  0.0f,
+               0.0f,  0.0f, -1.0f,  0.0f,
+               1.0f,  0.0f,  0.0f,  0.0f,
+               0.0f,  0.0f,  0.0f,  1.0f; // x 90, and z 90
+    */
+    changer <<  0.0f,  0.0f,  1.0f,  0.0f,
+               -1.0f,  0.0f,  0.0f,  0.0f,
+                0.0f, -1.0f,  0.0f,  0.0f,
+                0.0f,  0.0f,  0.0f,  1.0f; // x 90, and z 90
+    
+    // main loop
+    int print_index=0;
+    geometry_msgs::PoseStamped current_pose;
+
+    while (!SLAM.isShutDown() && ros::ok())
     {
         {
             std::unique_lock<std::mutex> lk(imu_mutex);
@@ -355,7 +389,7 @@ int main(int argc, char **argv) {
         /*cv::Mat depthCV_8U;
         depthCV.convertTo(depthCV_8U,CV_8U,0.01);
         cv::imshow("depth image", depthCV_8U);*/
-
+        //cv::imshow("depth image",depth);
         if(imageScale != 1.f)
         {
 #ifdef REGISTER_TIMES
@@ -389,7 +423,108 @@ int main(int argc, char **argv) {
     #endif
 #endif
         // Pass the image to the SLAM system
-        SLAM.TrackRGBD(im, depth, timestamp); //, vImuMeas); depthCV
+        output = SLAM.TrackRGBD(im, depth, timestamp); //, vImuMeas); depthCV
+
+        // ROS
+        //publish
+        // current pose based on camera frame, whose z axis is going foward!
+        // current_camera_pose = output.inverse().matrix() * changer;
+        Eigen::Matrix4f current_camera_pose = output.inverse().matrix();
+        // Sophus::SE3f current_base_pose(current_camera_pose * changer);
+        Sophus::SE3f current_base_pose(changer * current_camera_pose);
+        // Sophus::SE3f current_base_pose(current_camera_pose);
+        // Sophus::SO3f aligned_heading(changer * current_camera_pose);
+        // Sophus::SE3f current_camera_pose, current_base_pose;
+        // Eigen::Quaternionf q = current_base_pose.so3().unit_quaternion();
+        // Eigen::Quaternionf q = output.inverse().so3().unit_quaternion();
+        // Eigen::Quaternionf q(1,0,0,0);  // w,x,y,z
+        Eigen::Quaternionf q(0.5, 0.5, -0.5, 0.5);
+        q = current_base_pose.so3().unit_quaternion() * q;
+        // q = q * output.inverse().so3().unit_quaternion();
+        /*
+        rpyfromquaternion (q);
+        oring r = r;
+        oring p = p;
+        oring q =q;
+        
+        trans r = y
+        trans p = r
+        trans y = r
+
+        quatfromrpy (trans r p y)
+        */
+
+        float rpy[3];
+
+        current_pose.header.stamp = ros::Time::now();
+        current_pose.header.frame_id = "map";
+        current_pose.pose.position.x = current_base_pose.translation()(0,0);
+        current_pose.pose.position.y = current_base_pose.translation()(1,0);
+        current_pose.pose.position.z = current_base_pose.translation()(2,0);
+        
+
+        current_pose.pose.orientation.x = q.x();
+        current_pose.pose.orientation.y = q.y();
+        current_pose.pose.orientation.z = q.z();
+        current_pose.pose.orientation.w = q.w();
+
+        // current_pose.pose.orientation.x = 
+        pose_pub.publish(current_pose);
+        // show output
+        if(ros::ok() && print_index >  5 )
+        {
+            // Eigen::Matrix3f rotation_matrix = output.so3().matrix();
+            
+            // std::cout<<"translation vector : "<< output.translation()
+
+            /*
+            inline void getEulerAnglesFromQuaternion(const Eigen::Quaternion<double>& q,
+                                         Eigen::Vector3d* euler_angles) {
+            {
+                assert(euler_angles != NULL);
+
+                *euler_angles << std::atan2(2.0 * (q.w() * q.x() + q.y() * q.z()),
+                                    1.0 - 2.0 * (q.x() * q.x() + q.y() * q.y())),
+
+                    std::asin(2.0 * (q.w() * q.y() - q.z() * q.x())),
+
+                    std::atan2(2.0 * (q.w() * q.z() + q.x() * q.y()),
+                        1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
+                }
+            }
+            */
+            // rpy[0] = std::atan2(2.0 * (q.w() * q.x() + q.y() * q.z()),
+            //                         1.0 - 2.0 * (q.x() * q.x() + q.y() * q.y()));
+
+            // rpy[1] = std::asin(2.0 * (q.w() * q.y() - q.z() * q.x()));
+
+            // rpy[2] = std::atan2(2.0 * (q.w() * q.z() + q.x() * q.y()),
+            //             1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
+
+
+
+            std::cout<<"current pose"<<std::endl
+            
+            <<"x : "<<current_base_pose.translation()(0,0)<<std::endl
+            <<"y : "<<current_base_pose.translation()(1,0)<<std::endl
+            <<"z : "<<current_base_pose.translation()(2,0)<<std::endl
+            <<"========================"<<std::endl
+            <<"x : "<<output.translation()(0,0)<<std::endl
+            <<"y : "<<output.translation()(1,0)<<std::endl
+            <<"z : "<<output.translation()(2,0)<<std::endl
+            <<"========================"<<std::endl
+            //<<"translation vector : "<< current_camera_pose.translation() <<std::endl
+            // << " rotation : "<<rpy[0] <<", "<<rpy[1]<<", "<<rpy[2] << std::endl;
+            << " quaternion(x,y,z,w) : "<<q.x() <<", "<<q.y()<<", "<<q.z() <<", "<<q.w()<< std::endl;
+            print_index=0;
+        }
+
+        print_index++;
+        if (!ros::ok())
+        {
+            std::cout<<"ros shutdown!"<<std::endl;
+            break;
+        }
 
 #ifdef REGISTER_TIMES
     #ifdef COMPILEDWITHC11

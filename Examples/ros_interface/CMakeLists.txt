@@ -42,12 +42,14 @@ endif()
 find_package(Eigen3 3.1.0 REQUIRED)
 find_package(Pangolin REQUIRED)
 
+find_package(realsense2)
+
 include_directories(
 ${PROJECT_SOURCE_DIR}
-${PROJECT_SOURCE_DIR}/../../../
-${PROJECT_SOURCE_DIR}/../../../include
-${PROJECT_SOURCE_DIR}/../../../include/CameraModels
-${PROJECT_SOURCE_DIR}/../../../Thirdparty/Sophus
+${PROJECT_SOURCE_DIR}/../../
+${PROJECT_SOURCE_DIR}/../../include
+${PROJECT_SOURCE_DIR}/../../include/CameraModels
+${PROJECT_SOURCE_DIR}/../../Thirdparty/Sophus
 ${Pangolin_INCLUDE_DIRS}
 )
 
@@ -55,20 +57,26 @@ set(LIBS
 ${OpenCV_LIBS} 
 ${EIGEN3_LIBS}
 ${Pangolin_LIBRARIES}
-${PROJECT_SOURCE_DIR}/../../../Thirdparty/DBoW2/lib/libDBoW2.so
-${PROJECT_SOURCE_DIR}/../../../Thirdparty/g2o/lib/libg2o.so
-${PROJECT_SOURCE_DIR}/../../../lib/libORB_SLAM3.so
+${PROJECT_SOURCE_DIR}/../../Thirdparty/DBoW2/lib/libDBoW2.so
+${PROJECT_SOURCE_DIR}/../../Thirdparty/g2o/lib/libg2o.so
+${PROJECT_SOURCE_DIR}/../../lib/libORB_SLAM3.so
 -lboost_system
 )
 
-# Node for monocular camera
-rosbuild_add_executable(Mono
-src/ros_mono.cc
+include_directories(${PROJECT_NAME}
+${realsense_INCLUDE_DIR}
 )
+# target_link_libraries(${PROJECT_NAME}
+# ${realsense2_LIBRARY}
+# )
+# # Node for monocular camera
+# rosbuild_add_executable(Mono
+# src/ros_mono.cc
+# )
 
-target_link_libraries(Mono
-${LIBS}
-)
+# target_link_libraries(Mono
+# ${LIBS}
+# )
 
 # Node for monocular camera (Augmented Reality Demo)
 #rosbuild_add_executable(MonoAR
@@ -81,14 +89,14 @@ ${LIBS}
 #${LIBS}
 #)
 
-# Node for stereo camera
-rosbuild_add_executable(Stereo
-src/ros_stereo.cc
-)
+# # Node for stereo camera
+# rosbuild_add_executable(Stereo
+# src/ros_stereo.cc
+# )
 
-target_link_libraries(Stereo
-${LIBS}
-)
+# target_link_libraries(Stereo
+# ${LIBS}
+# )
 
 # Node for RGB-D camera
 rosbuild_add_executable(RGBD
@@ -99,20 +107,29 @@ target_link_libraries(RGBD
 ${LIBS}
 )
 
-# Node for monocular-inertial camera
-rosbuild_add_executable(Mono_Inertial
-src/ros_mono_inertial.cc
+rosbuild_add_executable(rgbd_realsense
+src/ros_rgbd_realsense_D435i.cc
 )
 
-target_link_libraries(Mono_Inertial
+target_link_libraries(rgbd_realsense
 ${LIBS}
+${realsense2_LIBRARY}
 )
 
-# Node for stereo-inertial camera
-rosbuild_add_executable(Stereo_Inertial
-src/ros_stereo_inertial.cc
-)
+# # Node for monocular-inertial camera
+# rosbuild_add_executable(Mono_Inertial
+# src/ros_mono_inertial.cc
+# )
 
-target_link_libraries(Stereo_Inertial
-${LIBS}
-)
+# target_link_libraries(Mono_Inertial
+# ${LIBS}
+# )
+
+# # Node for stereo-inertial camera
+# rosbuild_add_executable(Stereo_Inertial
+# src/ros_stereo_inertial.cc
+# )
+
+# target_link_libraries(Stereo_Inertial
+# ${LIBS}
+# )

@@ -29,6 +29,7 @@
 #include<opencv2/imgproc/imgproc.hpp>
 
 #include"../../../include/System.h"
+#include"../../../include/Converter.h"
 
 #include"ViewerAR.h"
 

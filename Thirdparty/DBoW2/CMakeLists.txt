@@ -29,12 +29,13 @@ set(SRCS_DUTILS
   DUtils/Timestamp.cpp)
 
 
-find_package(OpenCV 4 QUIET)
+find_package(OpenCV 3.2 REQUIRED)
 if(NOT OpenCV_FOUND)
-   find_package(OpenCV 3.0 QUIET)
-   if(NOT OpenCV_FOUND)
-      message(FATAL_ERROR "OpenCV > 3.0 not found.")
-   endif()
+#find_package(OpenCV 3.0 QUIET)
+#   if(NOT OpenCV_FOUND)
+#message(FATAL_ERROR "OpenCV > 3.0 not found.")
+      message(FATAL_ERROR "OpenCV > 4.4 not found.")
+#   endif()
 endif()
 
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
