@@ -38,6 +38,7 @@ namespace ORB_SLAM3
 
 Verbose::eLevel Verbose::th = Verbose::VERBOSITY_NORMAL;
 
+// Constructor
 System::System(const string &strVocFile, const string &strSettingsFile, const eSensor sensor,
                const bool bUseViewer, const int initFr, const string &strSequence):
     mSensor(sensor), mpViewer(static_cast<Viewer*>(NULL)), mbReset(false), mbResetActiveMap(false),
@@ -1335,6 +1336,64 @@ vector<cv::KeyPoint> System::GetTrackedKeyPointsUn()
     unique_lock<mutex> lock(mMutexState);
     return mTrackedKeyPointsUn;
 }
+
+void System::GetVOandMap(vector<bool>& mvbVO, vector<bool>& mvbMap)
+{
+    int N = mpTracker->mCurrentFrame.mvKeys.size();   
+
+    if(mpTracker->mLastProcessedState==Tracking::OK)
+    {
+        for(int i=0;i<N;i++)
+        {
+            MapPoint* pMP = mpTracker->mCurrentFrame.mvpMapPoints[i];
+            if(pMP)
+            {
+                if(!mpTracker->mCurrentFrame.mvbOutlier[i])
+                {
+                    if(pMP->Observations()>0)
+                        mvbMap[i]=true;
+                    else
+                        mvbVO[i]=true;
+                }
+            }
+        }
+    }
+
+}
+
+
+void System::GetPointCloud(vector<Eigen::Matrix<float,3,1>>& global_points, vector<Eigen::Matrix<float,3,1>>& local_points)
+{
+    
+    Map* pActiveMap = mpAtlas->GetCurrentMap();
+    if(!pActiveMap)
+        return;
+    const vector<MapPoint*> &vpMPs = pActiveMap->GetAllMapPoints();
+    const vector<MapPoint*> &vpRefMPs = pActiveMap->GetReferenceMapPoints();
+    set<MapPoint*> spRefMPs(vpRefMPs.begin(), vpRefMPs.end());
+
+    if(vpMPs.empty())
+        return;
+
+    for(size_t i=0, iend=vpMPs.size(); i<iend;i++)
+    {
+        if(vpMPs[i]->isBad() || spRefMPs.count(vpMPs[i]))
+            continue;
+        Eigen::Matrix<float,3,1> pos = vpMPs[i]->GetWorldPos();
+        //glVertex3f(pos(0),pos(1),pos(2));
+        global_points.push_back(pos);
+    }
+
+    for(set<MapPoint*>::iterator sit=spRefMPs.begin(), send=spRefMPs.end(); sit!=send; sit++)
+    {
+        if((*sit)->isBad())
+            continue;
+        Eigen::Matrix<float,3,1> pos = (*sit)->GetWorldPos();
+        local_points.push_back(pos);
+    }
+}
+
+
 
 double System::GetTimeFromIMUInit()
 {

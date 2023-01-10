@@ -176,6 +176,8 @@ public:
     int GetTrackingState();
     std::vector<MapPoint*> GetTrackedMapPoints();
     std::vector<cv::KeyPoint> GetTrackedKeyPointsUn();
+    void GetVOandMap(vector<bool>& mvbVO, vector<bool>& mvbMap);
+    void GetPointCloud(vector<Eigen::Matrix<float,3,1>>& global_points, vector<Eigen::Matrix<float,3,1>>& local_points);
 
     // For debugging
     double GetTimeFromIMUInit();

@@ -43,6 +43,8 @@ find_package(Eigen3 3.1.0 REQUIRED)
 find_package(Pangolin REQUIRED)
 
 find_package(realsense2)
+find_package(PCL REQUIRED)
+find_package(pcl_ros REQUIRED)
 
 include_directories(
 ${PROJECT_SOURCE_DIR}
@@ -62,6 +64,11 @@ ${PROJECT_SOURCE_DIR}/../../Thirdparty/g2o/lib/libg2o.so
 ${PROJECT_SOURCE_DIR}/../../lib/libORB_SLAM3.so
 -lboost_system
 )
+
+include_directories(${PCL_INCLUDE_DIRS})
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
+
 
 include_directories(${PROJECT_NAME}
 ${realsense_INCLUDE_DIR}
@@ -114,6 +121,7 @@ src/ros_rgbd_realsense_D435i.cc
 target_link_libraries(rgbd_realsense
 ${LIBS}
 ${realsense2_LIBRARY}
+${PCL_LIBRARIES}
 )
 
 # # Node for monocular-inertial camera
