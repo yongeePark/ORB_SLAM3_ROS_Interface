@@ -4,8 +4,9 @@
     <arg name="path_to_vocabulary" default="Vocabulary/ORBvoc.txt"/>
     <arg name="path_to_settings" default="Examples/RGB-D/RealSense_D435i.yaml"/>
 
-    <node name="rgbd_realsense" pkg="ros_interface" type="rgbd_realsense" output="screen"
+    <node name="rgbd_realsense" pkg="orb3_ros_interface" type="rgbd_realsense" output="screen"
     args="$(arg path_to_orb)$(arg path_to_vocabulary) $(arg path_to_orb)$(arg path_to_settings)" >
+    <remap from="/orb_pose" to="/scout/mavros/vision_pose/pose"/>
       <!-- <remap from="/camera/depth_registered/image_raw" to="/camera/depth/image_rect_raw"/>
       <remap from="/camera/rgb/image_raw" to="/camera/color/image_raw"/> -->
     </node>

@@ -34,8 +34,12 @@
 
 #include <ros/ros.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <nav_msgs/Odometry.h>
 
 #include <System.h>
+
+#include <image_transport/image_transport.h>
+#include <cv_bridge/cv_bridge.h>
 
 using namespace std;
 
@@ -121,7 +125,17 @@ int main(int argc, char **argv) {
     ros::init(argc, argv,"ros_rgbd_realsense");
     ros::NodeHandle nh;
     ros::Publisher pose_pub = nh.advertise<geometry_msgs::PoseStamped>("orb_pose",1);
-    
+    ros::Publisher odom_pub = nh.advertise<nav_msgs::Odometry>("orb_odom",1);
+    int freq = 15;
+    ros::Rate loop_rate(freq);
+
+    // for image handling
+    image_transport::ImageTransport it(nh);
+    image_transport::Publisher pub_image = it.advertise("/camera/color/image_raw", 1);
+    image_transport::Publisher pub_depth = it.advertise("/camera/depth/image_raw", 1);
+    sensor_msgs::ImagePtr image_msg;
+    sensor_msgs::ImagePtr depth_msg;
+
     string file_name;
     bool bFileName = false;
 
@@ -184,11 +198,11 @@ int main(int argc, char **argv) {
     rs2::config cfg;
 
     // RGB stream
-    cfg.enable_stream(RS2_STREAM_COLOR,640, 480, RS2_FORMAT_RGB8, 30);
+    cfg.enable_stream(RS2_STREAM_COLOR,640, 480, RS2_FORMAT_RGB8, freq);
 
     // Depth stream
     // cfg.enable_stream(RS2_STREAM_INFRARED, 1, 640, 480, RS2_FORMAT_Y8, 30);
-    cfg.enable_stream(RS2_STREAM_DEPTH,640, 480, RS2_FORMAT_Z16, 30);
+    cfg.enable_stream(RS2_STREAM_DEPTH,640, 480, RS2_FORMAT_Z16, freq);
 
     // IMU stream
     cfg.enable_stream(RS2_STREAM_ACCEL, RS2_FORMAT_MOTION_XYZ32F); //, 250); // 63
@@ -293,6 +307,7 @@ int main(int argc, char **argv) {
             lock.unlock();
             cond_image_rec.notify_all();
         }
+        //loop_rate.sleep();
     };
 
 
@@ -346,9 +361,11 @@ int main(int argc, char **argv) {
                 0.0f, -1.0f,  0.0f,  0.0f,
                 0.0f,  0.0f,  0.0f,  1.0f; // x 90, and z 90
     
+    // ==============================================================================
     // main loop
     int print_index=0;
     geometry_msgs::PoseStamped current_pose;
+    nav_msgs::Odometry current_odom;
 
     while (!SLAM.isShutDown() && ros::ok())
     {
@@ -462,14 +479,25 @@ int main(int argc, char **argv) {
         current_pose.pose.position.y = current_base_pose.translation()(1,0);
         current_pose.pose.position.z = current_base_pose.translation()(2,0);
         
-
         current_pose.pose.orientation.x = q.x();
         current_pose.pose.orientation.y = q.y();
         current_pose.pose.orientation.z = q.z();
         current_pose.pose.orientation.w = q.w();
 
+        current_odom.header.stamp = ros::Time::now();
+        current_odom.header.frame_id = "map";
+        current_odom.pose.pose.position.x = current_base_pose.translation()(0,0);
+        current_odom.pose.pose.position.y = current_base_pose.translation()(1,0);
+        current_odom.pose.pose.position.z = current_base_pose.translation()(2,0);
+        
+        current_odom.pose.pose.orientation.x = q.x();
+        current_odom.pose.pose.orientation.y = q.y();
+        current_odom.pose.pose.orientation.z = q.z();
+        current_odom.pose.pose.orientation.w = q.w();
+
         // current_pose.pose.orientation.x = 
         pose_pub.publish(current_pose);
+        odom_pub.publish(current_odom);
         // show output
         if(ros::ok() && print_index >  5 )
         {
@@ -509,15 +537,21 @@ int main(int argc, char **argv) {
             <<"y : "<<current_base_pose.translation()(1,0)<<std::endl
             <<"z : "<<current_base_pose.translation()(2,0)<<std::endl
             <<"========================"<<std::endl
-            <<"x : "<<output.translation()(0,0)<<std::endl
-            <<"y : "<<output.translation()(1,0)<<std::endl
-            <<"z : "<<output.translation()(2,0)<<std::endl
-            <<"========================"<<std::endl
             //<<"translation vector : "<< current_camera_pose.translation() <<std::endl
             // << " rotation : "<<rpy[0] <<", "<<rpy[1]<<", "<<rpy[2] << std::endl;
             << " quaternion(x,y,z,w) : "<<q.x() <<", "<<q.y()<<", "<<q.z() <<", "<<q.w()<< std::endl;
             print_index=0;
         }
+        // Publish image
+        
+        // reference! DO NOT UNCOMMENT BELOW 2 LINES!!!
+        //im = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
+        //depth = cv::Mat(cv::Size(width_img, height_img), CV_16U, (void*)(depth_frame.get_data()), cv::Mat::AUTO_STEP);
+
+        image_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", im).toImageMsg();
+        depth_msg = cv_bridge::CvImage(std_msgs::Header(), "mono16", depth).toImageMsg();
+        pub_image.publish(image_msg);
+        pub_depth.publish(depth_msg);
 
         print_index++;
         if (!ros::ok())
