@@ -8,6 +8,7 @@
 
     <node name="rgbd_realsense" pkg="ros_interface" type="rgbd_realsense" output="screen"
     args="$(arg path_to_orb)$(arg path_to_vocabulary) $(arg path_to_orb)$(arg path_to_settings)" >
+      <remap from="/orb_pose" to="/scout/mavros/vision_pose/pose"/>
       <param name="enable_pangolin" type="bool" value="$(arg use_pangolin)" />
 
       <!-- <remap from="/camera/depth_registered/image_raw" to="/camera/depth/image_rect_raw"/>
