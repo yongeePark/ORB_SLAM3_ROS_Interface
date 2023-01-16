@@ -301,14 +301,20 @@ int main(int argc, char **argv) {
     
     if(enable_auto_exposure == false)
     {
-    sensors.at(0).set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,false);
+        pipe_profile.get_device().first<rs2::depth_sensor>().set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,false);
+        pipe_profile.get_device().query_sensors()[1].set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,false);
+        //depth_sensor = profile.get_device().first_depth_sensor() //python
     }
     else
     {
-    rs400::advanced_mode advnc_mode(selected_device);
-    STAEControl ae_ctrl = advnc_mode.get_ae_control();
-    ae_ctrl.meanIntensitySetPoint = ae_meanIntensitySetPoint;
-    advnc_mode.set_ae_control(ae_ctrl);
+        pipe_profile.get_device().first<rs2::depth_sensor>().set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE, true);
+        pipe_profile.get_device().query_sensors()[1].set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,true);
+
+    // sensors.at(0).set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,true);
+    // rs400::advanced_mode advnc_mode(selected_device);
+    // STAEControl ae_ctrl = advnc_mode.get_ae_control();
+    // ae_ctrl.meanIntensitySetPoint = ae_meanIntensitySetPoint;
+    // advnc_mode.set_ae_control(ae_ctrl);
     }
 
 
