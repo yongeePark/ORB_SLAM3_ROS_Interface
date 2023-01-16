@@ -39,6 +39,9 @@
 
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
+#include <librealsense2/rs_advanced_mode.hpp> // this is for d435i Auto Exposure
+// #include <librealsense2/rs_option.h>
+
 
 #include <pcl/point_cloud.h>
 #include <pcl/PCLPointCloud2.h>
@@ -160,6 +163,23 @@ int main(int argc, char **argv) {
         <<"shut down the program"<<std::endl;
         return 1;
     }
+    bool enable_auto_exposure;
+    if (!nh_param.getParam("/rgbd_realsense/enable_auto_exposure",enable_auto_exposure))
+    {
+        std::cout<<"It has not been decided whether to use auto_exposure."<<std::endl
+        <<"shut down the program"<<std::endl;
+        return 1;
+    }
+    int ae_meanIntensitySetPoint;
+    if(enable_auto_exposure)
+    {
+    if (!nh_param.getParam("/rgbd_realsense/ae_meanIntensitySetPoint",ae_meanIntensitySetPoint))
+    {
+        std::cout<<"It has not been decided the number of the mean Intensity Set Point."<<std::endl
+        <<"shut down the program"<<std::endl;
+        return 1;
+    }
+    }
     
     // std::cout<<"use pangolin : "<<enable_pangolin<<std::endl;
     // std::cout<<"end of the program"<<std::endl;
@@ -276,6 +296,24 @@ int main(int argc, char **argv) {
 
     // start and stop just to get necessary profile
     rs2::pipeline_profile pipe_profile = pipe.start(cfg);
+
+    
+    
+    if(enable_auto_exposure == false)
+    {
+    sensors.at(0).set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,false);
+    }
+    else
+    {
+    rs400::advanced_mode advnc_mode(selected_device);
+    STAEControl ae_ctrl = advnc_mode.get_ae_control();
+    ae_ctrl.meanIntensitySetPoint = ae_meanIntensitySetPoint;
+    advnc_mode.set_ae_control(ae_ctrl);
+    }
+
+
+    // set AE
+
     pipe.stop();
 
     // Align depth and RGB frames
