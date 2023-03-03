@@ -40,8 +40,19 @@
 
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
+#include <librealsense2/rs_advanced_mode.hpp> // this is for d435i Auto Exposure
+
+#include <pcl/point_cloud.h>
+#include <pcl/PCLPointCloud2.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/point_types.h>
+#include <pcl_ros/point_cloud.h>
 
 using namespace std;
+
+void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint> keypoints, float imageScale, vector<bool> mvbVO,vector<bool> mvbMap);
+void PublishPointCloud(vector<Eigen::Matrix<float,3,1>>& global_points, vector<Eigen::Matrix<float,3,1>>& local_points,
+ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub);
 
 bool b_continue_session;
 
@@ -124,17 +135,59 @@ int main(int argc, char **argv) {
 
     ros::init(argc, argv,"ros_rgbd_realsense");
     ros::NodeHandle nh;
+    ros::NodeHandle nh_param("~");
+
     ros::Publisher pose_pub = nh.advertise<geometry_msgs::PoseStamped>("orb_pose",1);
     ros::Publisher odom_pub = nh.advertise<nav_msgs::Odometry>("orb_odom",1);
     int freq = 15;
     ros::Rate loop_rate(freq);
 
+    ros::Publisher global_pc_pub = nh.advertise<sensor_msgs::PointCloud2>("/ORB3/globalmap",1);
+    ros::Publisher  local_pc_pub = nh.advertise<sensor_msgs::PointCloud2>("/ORB3/localmap",1);
+
+    bool enable_pangolin;
+    if (!nh_param.getParam("/rgbd_realsense/enable_pangolin",enable_pangolin))
+    {
+        std::cout<<"It has not been decided whether to use Pangolin."<<std::endl
+        <<"shut down the program"<<std::endl;
+        return 1;
+    }
+    bool enable_auto_exposure;
+    if (!nh_param.getParam("/rgbd_realsense/enable_auto_exposure",enable_auto_exposure))
+    {
+        std::cout<<"It has not been decided whether to use auto_exposure."<<std::endl
+        <<"shut down the program"<<std::endl;
+        return 1;
+    }
+    int exposure_time_param;
+    if (!nh_param.getParam("/rgbd_realsense/exposure_time",exposure_time_param))
+    {
+        std::cout<<"It has not been decided the exposure_time."<<std::endl
+        <<"shut down the program"<<std::endl;
+        return 1;
+    }
+    uint32_t exposure_time = exposure_time_param;
+    int ae_meanIntensitySetPoint;
+    if(enable_auto_exposure)
+    {
+        if (!nh_param.getParam("/rgbd_realsense/ae_meanIntensitySetPoint",ae_meanIntensitySetPoint))
+        {
+            std::cout<<"It has not been decided the number of the mean Intensity Set Point."<<std::endl
+            <<"shut down the program"<<std::endl;
+            return 1;
+        }
+    }
+
     // for image handling
     image_transport::ImageTransport it(nh);
     image_transport::Publisher pub_image = it.advertise("/camera/color/image_raw", 1);
+    image_transport::Publisher pub_image_feature = it.advertise("/orb3_feature_image", 1);
     image_transport::Publisher pub_depth = it.advertise("/camera/depth/image_raw", 1);
     sensor_msgs::ImagePtr image_msg;
+    sensor_msgs::ImagePtr image_feature_msg;
     sensor_msgs::ImagePtr depth_msg;
+
+
 
     string file_name;
     bool bFileName = false;
@@ -232,6 +285,26 @@ int main(int argc, char **argv) {
 
     // start and stop just to get necessary profile
     rs2::pipeline_profile pipe_profile = pipe.start(cfg);
+    if(enable_auto_exposure == false)
+    {
+        pipe_profile.get_device().first<rs2::depth_sensor>().set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,false);
+        pipe_profile.get_device().query_sensors()[1].set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,false);
+        // sensors.at(0).set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,false);
+        // sensors.at(0).set_option(rs2_option::RS2_OPTION_EXPOSURE,exposure_time);
+    }
+    else
+    {
+        pipe_profile.get_device().first<rs2::depth_sensor>().set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE, true);
+        pipe_profile.get_device().query_sensors()[1].set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,true);
+        /**
+        sensors.at(0).set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,true);
+        rs400::advanced_mode advnc_mode(selected_device);
+        STAEControl ae_ctrl = advnc_mode.get_ae_control();
+        ae_ctrl.meanIntensitySetPoint = ae_meanIntensitySetPoint;
+        advnc_mode.set_ae_control(ae_ctrl);
+
+        */
+    }
     pipe.stop();
 
     // Align depth and RGB frames
@@ -336,11 +409,11 @@ int main(int argc, char **argv) {
 
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
-    ORB_SLAM3::System SLAM(argv[1],argv[2],ORB_SLAM3::System::RGBD, true, 0, file_name);
+    ORB_SLAM3::System SLAM(argv[1],argv[2],ORB_SLAM3::System::RGBD, enable_pangolin, 0, file_name);
     float imageScale = SLAM.GetImageScale();
 
     double timestamp;
-    cv::Mat im, depth;
+    cv::Mat im, depth, im_feature;
 
     double t_resize = 0.f;
     double t_track = 0.f;
@@ -364,6 +437,7 @@ int main(int argc, char **argv) {
     // ==============================================================================
     // main loop
     int print_index=0;
+    int pointcloud_pub_index=0;
     geometry_msgs::PoseStamped current_pose;
     nav_msgs::Odometry current_odom;
 
@@ -498,6 +572,13 @@ int main(int argc, char **argv) {
         // current_pose.pose.orientation.x = 
         pose_pub.publish(current_pose);
         odom_pub.publish(current_odom);
+
+
+
+
+
+
+
         // show output
         if(ros::ok() && print_index >  5 )
         {
@@ -548,12 +629,38 @@ int main(int argc, char **argv) {
         //im = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
         //depth = cv::Mat(cv::Size(width_img, height_img), CV_16U, (void*)(depth_frame.get_data()), cv::Mat::AUTO_STEP);
 
-        image_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", im).toImageMsg();
+        std::vector<cv::KeyPoint> keypoints = SLAM.GetTrackedKeyPointsUn();
+        vector<bool> mvbMap, mvbVO;
+        int N = keypoints.size();
+        mvbVO = vector<bool>(N,false);
+        mvbMap = vector<bool>(N,false);
+
+        SLAM.GetVOandMap(mvbVO,mvbMap);
+        DrawFeature(im_feature,im,keypoints,imageScale,mvbVO,mvbMap);
+
+        image_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im).toImageMsg();
+        image_feature_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im_feature).toImageMsg();
         depth_msg = cv_bridge::CvImage(std_msgs::Header(), "mono16", depth).toImageMsg();
         pub_image.publish(image_msg);
+        pub_image_feature.publish(image_feature_msg);
         pub_depth.publish(depth_msg);
 
+        // ***********************************************************************************
+        // pub pointcloud
+
+        if(ros::ok() && pointcloud_pub_index > 15 )
+        {
+            vector<Eigen::Matrix<float,3,1>> global_points, local_points;
+            // global_points.clear();
+            // local_points.clear();
+            SLAM.GetPointCloud(global_points,local_points);
+
+            PublishPointCloud(global_points,local_points,global_pc_pub,local_pc_pub);
+            pointcloud_pub_index = 0;
+        }
+
         print_index++;
+        pointcloud_pub_index++;
         if (!ros::ok())
         {
             std::cout<<"ros shutdown!"<<std::endl;
@@ -622,4 +729,81 @@ bool profile_changed(const std::vector<rs2::stream_profile>& current, const std:
         }
     }
     return false;
+}
+
+void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint> keypoints, float imageScale, vector<bool> mvbVO,vector<bool> mvbMap)
+{
+    // copy IMAGE
+    im.copyTo(im_feature);
+
+    cv::Point2f point(100,100);
+    // cv::circle(im_feature,point,2,cv::Scalar(0,255,0),-1);   
+
+
+    
+    std::vector<cv::KeyPoint> keypoints_ = keypoints;
+    std::vector<bool>         vbVO = mvbVO;
+    std::vector<bool>         vbMap = mvbMap;
+    const float r = 5;
+    int n = keypoints_.size();
+    
+    for(int i=0;i<n;i++)
+    {
+        if(vbVO[i] || vbMap[i])
+        {
+            cv::Point2f pt1,pt2;
+            cv::Point2f point;
+            
+            point = keypoints_[i].pt / imageScale;
+            float px = keypoints_[i].pt.x / imageScale;
+            float py = keypoints_[i].pt.y / imageScale;
+            pt1.x=px-r;
+            pt1.y=py-r;
+            pt2.x=px+r;
+            pt2.y=py+r;
+            
+            cv::rectangle(im_feature,pt1,pt2,cv::Scalar(0,255,0));
+            cv::circle(im_feature,point,2,cv::Scalar(0,255,0),-1);
+        }
+    }
+    
+}
+
+void PublishPointCloud(vector<Eigen::Matrix<float,3,1>>& global_points, vector<Eigen::Matrix<float,3,1>>& local_points,
+ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub)
+{
+    pcl::PointCloud<pcl::PointXYZ>::Ptr global_pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::PointCloud<pcl::PointXYZ>::Ptr local_pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
+
+    //global
+    std::cout<<"global_points size : "<<global_points.size()<<std::endl;
+    for(int i=0; i<global_points.size();i++)
+    {
+        pcl::PointXYZ pt;
+        pt.x =  global_points[i](2,0);
+        pt.y = -global_points[i](0,0);
+        pt.z = -global_points[i](1,0);
+        global_pointcloud->points.push_back(pt);
+    }
+
+    for(int i=0;i<local_points.size();i++)
+    {
+        pcl::PointXYZ pt;
+        pt.x =  local_points[i](2,0);
+        pt.y = -local_points[i](0,0);
+        pt.z = -local_points[i](1,0);
+        global_pointcloud->points.push_back(pt);
+        // local_pointcloud->points.push_back(pt); 
+    }
+    sensor_msgs::PointCloud2 global_map_msg;
+    pcl::toROSMsg(*global_pointcloud,global_map_msg);
+    global_map_msg.header.frame_id = "map";
+    global_map_msg.header.stamp = ros::Time::now();
+    global_pc_pub.publish(global_map_msg);
+    
+    // sensor_msgs::PointCloud2 local_map_msg;
+    // pcl::toROSMsg(*local_pointcloud,local_map_msg);
+    // local_map_msg.header.frame_id = "map";
+    // local_map_msg.header.stamp = ros::Time::now();
+    // local_pc_pub.publish(local_map_msg);
 }
