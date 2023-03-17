@@ -35,6 +35,7 @@
 #include <ros/ros.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <nav_msgs/Odometry.h>
+#include <nav_msgs/Path.h>
 #include <sensor_msgs/PointCloud2.h>
 
 #include <image_transport/image_transport.h>
@@ -49,10 +50,18 @@
 #include <pcl/point_types.h>
 #include <pcl_ros/point_cloud.h>
 
+#include <pcl/filters/voxel_grid.h>
+
+// d435i pointcloud header
+#include <pcl/filters/passthrough.h>
+
 #include <System.h>
 
 using namespace std;
+using pcl_ptr = pcl::PointCloud<pcl::PointXYZ>::Ptr;
 
+void PublishPointcloudFromD435i(rs2::depth_frame depth_frame, ros::Publisher& d435i_pc_pub);
+pcl_ptr points_to_pcl(const rs2::points& points);
 void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint> keypoints, float imageScale, vector<bool> mvbVO,vector<bool> mvbMap);
 void PublishPointCloud(vector<Eigen::Matrix<float,3,1>>& global_points, vector<Eigen::Matrix<float,3,1>>& local_points,
 ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub);
@@ -63,6 +72,14 @@ void exit_loop_handler(int s){
     b_continue_session = false;
 
 }
+
+//for global goal
+void GlobalGoalCallback(const geometry_msgs::PoseStampedConstPtr &msg);
+double g_current_pose[3]; // x,y,z
+double g_current_yaw;
+double g_local_goal[3];
+
+
 
 rs2_stream find_stream_to_align(const std::vector<rs2::stream_profile>& streams);
 bool profile_changed(const std::vector<rs2::stream_profile>& current, const std::vector<rs2::stream_profile>& prev);
@@ -118,6 +135,17 @@ static rs2_option get_sensor_option(const rs2::sensor& sensor)
 }
 
 int main(int argc, char **argv) {
+
+    g_current_pose[0] = 0;
+    g_current_pose[1] = 0;
+    g_current_pose[2] = 0;
+    g_current_yaw = 0;
+
+    g_local_goal[0] = 0;
+    g_local_goal[1] = 0;
+    g_local_goal[2] = 0;
+
+
     // debug
     /*
     cout << endl
@@ -151,10 +179,20 @@ int main(int argc, char **argv) {
     ros::init(argc, argv,"ros_rgbd_realsense");
     ros::NodeHandle nh;
     ros::NodeHandle nh_param("~");
+
     ros::Publisher pose_pub = nh.advertise<geometry_msgs::PoseStamped>("orb_pose",1);
     ros::Publisher odom_pub = nh.advertise<nav_msgs::Odometry>("orb_odom",1);
+
+
+
     ros::Publisher global_pc_pub = nh.advertise<sensor_msgs::PointCloud2>("/ORB3/globalmap",1);
     ros::Publisher  local_pc_pub = nh.advertise<sensor_msgs::PointCloud2>("/ORB3/localmap",1);
+
+
+    ros::Publisher  d435i_pc_pub = nh.advertise<sensor_msgs::PointCloud2>("/ORB3/d435i_pointcloud",1);
+    ros::Publisher local_goal_pub = nh.advertise<nav_msgs::Path>("/scout/local_goal",1);
+
+    ros::Subscriber global_goal_sub = nh.subscribe("/scout/global_goal",1,GlobalGoalCallback);
 
     bool enable_pangolin;
     if (!nh_param.getParam("/rgbd_realsense/enable_pangolin",enable_pangolin))
@@ -456,7 +494,8 @@ int main(int argc, char **argv) {
     
 
 
-
+    // main loop
+    
     while (!SLAM.isShutDown() && ros::ok())
     {
         {
@@ -473,7 +512,9 @@ int main(int argc, char **argv) {
             fs = fsSLAM;
 
             if(count_im_buffer>1)
-                cout << count_im_buffer -1 << " dropped frs\n";
+            {
+                // cout << count_im_buffer -1 << " dropped frs\n";
+            }
             count_im_buffer = 0;
 
             timestamp = timestamp_image;
@@ -493,6 +534,43 @@ int main(int argc, char **argv) {
         im = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
         //im_feature = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
         depth = cv::Mat(cv::Size(width_img, height_img), CV_16U, (void*)(depth_frame.get_data()), cv::Mat::AUTO_STEP);
+	
+	/*
+
+	std::cout<<"before function"<<endl;
+
+	//PublishPointcloudFromD435i(depth_frame, d435i_pc_pub);
+
+//	std::cout<<"after function"<<endl;
+
+	// Publish pointcloud directly from D435i
+	rs2::pointcloud pc;
+	rs2::points points;
+	points = pc.calculate(depth_frame);
+
+	// pcl
+	auto pcl_points = points_to_pcl(points);
+
+	//pcl_ptr d435i_pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
+	pcl::PointCloud<pcl::PointXYZ> d435i_pointcloud;
+	pcl::PassThrough<pcl::PointXYZ> pass;
+	pass.setInputCloud(pcl_points);
+	pass.setFilterFieldName("z");
+	pass.setFilterLimits(0.0,1.0);
+	std::cout<<"before filter"<<endl;
+	pass.filter(d435i_pointcloud);
+	std::cout<<d435i_pointcloud.size()<<std::endl;
+	std::cout<<"after filter"<<endl;
+	
+	sensor_msgs::PointCloud2 d435i_pointcloud_msg;
+	pcl::toROSMsg(d435i_pointcloud,d435i_pointcloud_msg);
+	d435i_pointcloud_msg.header.frame_id = "map";
+	d435i_pointcloud_msg.header.stamp = ros::Time::now();
+	d435i_pc_pub.publish(d435i_pointcloud_msg);
+	*/
+
+
+
 
         /*cv::Mat depthCV_8U;
         depthCV.convertTo(depthCV_8U,CV_8U,0.01);
@@ -576,6 +654,15 @@ int main(int argc, char **argv) {
         // current_pose.pose.orientation.x = 
         pose_pub.publish(current_pose);
         odom_pub.publish(current_odom);
+        g_current_pose[0] = current_base_pose.translation()(0,0);
+        g_current_pose[1] = current_base_pose.translation()(1,0);
+        g_current_pose[2] = current_base_pose.translation()(2,0);
+
+        g_current_yaw =  std::atan2(2.0 * ( q.w() * q.z() + q.x() * q.y()),
+      1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()) );
+
+
+        
         // show output
         if(ros::ok() && print_index >  5 )
         {
@@ -643,6 +730,26 @@ int main(int argc, char **argv) {
         pub_image.publish(image_msg);
         pub_image_feature.publish(image_feature_msg);
         pub_depth.publish(depth_msg);
+
+
+
+	    //publish pointcloud
+	    PublishPointcloudFromD435i(depth_frame, d435i_pc_pub);
+
+        //publish goal
+          geometry_msgs::PoseStamped p;
+            nav_msgs::Path path;
+  path.header.stamp=ros::Time::now();
+  path.header.frame_id="base_link";
+  p.pose.position.x=g_local_goal[0];
+  p.pose.position.y=g_local_goal[1];
+  p.pose.position.z=g_local_goal[2];
+  path.poses.push_back(p);
+  local_goal_pub.publish(path);
+
+  ros::spinOnce();
+
+
 
         // ***********************************************************************************
         // std::cout<<"current index : "<<print_index<<std::endl;
@@ -780,7 +887,7 @@ ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub)
     pcl::PointCloud<pcl::PointXYZ>::Ptr local_pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
 
     //global
-    std::cout<<"global_points size : "<<global_points.size()<<std::endl;
+    // std::cout<<"global_points size : "<<global_points.size()<<std::endl;
     for(int i=0; i<global_points.size();i++)
     {
         pcl::PointXYZ pt;
@@ -811,4 +918,94 @@ ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub)
     local_map_msg.header.frame_id = "map";
     local_map_msg.header.stamp = ros::Time::now();
     local_pc_pub.publish(local_map_msg);
+}
+
+
+// copied from librealsense/rs-pcl.cpp
+pcl_ptr points_to_pcl(const rs2::points& points)
+{
+    pcl_ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+
+    auto sp = points.get_profile().as<rs2::video_stream_profile>();
+    cloud->width = sp.width();
+    cloud->height = sp.height();
+    cloud->is_dense = false;
+    cloud->points.resize(points.size());
+    auto ptr = points.get_vertices();
+    for (auto& p : cloud->points)
+    {
+        p.x = ptr->x;
+        p.y = ptr->y;
+        p.z = ptr->z;
+        ptr++;
+    }
+
+    return cloud;
+}
+
+void PublishPointcloudFromD435i(rs2::depth_frame depth_frame, ros::Publisher& d435i_pc_pub)
+{
+	// Publish pointcloud directly from D435i
+	rs2::pointcloud pc;
+	rs2::points points;
+	points = pc.calculate(depth_frame);
+
+
+	// pcl
+	auto pcl_points = points_to_pcl(points);
+
+	pcl_ptr d435i_pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
+	//pcl::PointCloud<pcl::PointXYZ> d435i_pointcloud;
+	//   pcl::PassThrough<pcl::PointXYZ> pass;
+	//   pass.setInputCloud(pcl_points);
+
+	/*
+	pass.setFilterFieldName("z");
+	pass.setFilterLimits(0.0,1.0);
+	std::cout<<"before filter"<<endl;
+	pass.filter(*d435i_pointcloud);
+	std::cout<<"after filter"<<endl;
+	*/	
+
+    //downsampling
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_global_filtered_in(new pcl::PointCloud<pcl::PointXYZ>);
+
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_global_filtered_out(new pcl::PointCloud<pcl::PointXYZ>);
+    boost::shared_ptr<pcl::VoxelGrid<pcl::PointXYZ>> voxelgrid(new pcl::VoxelGrid<pcl::PointXYZ>());
+    // pcl::PointCloud<pcl::PointXYZ>::Ptr cl(new pcl::PointCloud<pcl::PointXYZ>);
+    // *cloud_global_filtered_in = *pcl_points;
+    // voxelgrid->setInputCloud(pcl_points);
+    // voxelgrid->setLeafSize(0.2, 0.2, 0.2);
+    // voxelgrid->filter(*cloud_global_filtered_out);
+    // *cloud_global_filtered_out = *cloud_global_filtered_in;
+
+
+
+
+	sensor_msgs::PointCloud2 d435i_pointcloud_msg;
+	//std::cout<<"before changing from pcl to ros"<<endl;
+	pcl::toROSMsg(*pcl_points,d435i_pointcloud_msg);
+    // pcl::toROSMsg(*cloud_global_filtered_out,d435i_pointcloud_msg);
+	//pcl::toROSMsg(*d435i_pointcloud,d435i_pointcloud_msg);
+	//std::cout<<"after changing from pcl to ros"<<endl;
+	d435i_pointcloud_msg.header.frame_id = "map";
+	d435i_pointcloud_msg.header.stamp = ros::Time::now();
+	d435i_pc_pub.publish(d435i_pointcloud_msg);
+
+}
+
+
+void GlobalGoalCallback(const geometry_msgs::PoseStampedConstPtr &msg)
+{
+  double global_x, global_y, global_z;
+  global_x = msg->pose.position.x;
+  global_y = msg->pose.position.y;
+  global_z = msg->pose.position.z;
+
+    
+  g_local_goal[0] = cos(-g_current_yaw) * (global_x - g_current_pose[0]) -
+            sin(-g_current_yaw) * (global_y - g_current_pose[1]);
+  g_local_goal[1] = sin(-g_current_yaw) * (global_x - g_current_pose[0]) +
+            cos(-g_current_yaw) * (global_y - g_current_pose[1]);
+  g_local_goal[2] = global_z - g_current_pose[2];
 }

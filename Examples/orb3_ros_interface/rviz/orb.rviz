@@ -56,8 +56,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 3.061192274093628
-        Min Value: -1.0308268070220947
+        Max Value: 3.851907730102539
+        Min Value: -0.2837658226490021
         Value: true
       Axis: Z
       Channel Name: intensity
@@ -76,7 +76,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.10000000149011612
       Style: Flat Squares
-      Topic: /ORB3/globalmap
+      Topic: /BLIO/globalmap
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -139,10 +139,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.12539781630039215
+      Pitch: 0.24039782583713531
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.250397205352783
+      Yaw: 3.380397319793701
     Saved: ~
 Window Geometry:
   Displays:

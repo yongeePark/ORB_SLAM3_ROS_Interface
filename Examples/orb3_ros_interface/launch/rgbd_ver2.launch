@@ -23,10 +23,10 @@
       -->
 
       <!-- Case 1 -->
-      <remap from="/ORB3/d435i_pointcloud" to="/BLIO/Globalmap"/>
+      <!--<remap from="/ORB3/d435i_pointcloud" to="/BLIO/Globalmap"/>-->
 
       <!-- Case 2 -->
-      <!--<remap from="/ORB3/globalmap" to="/BLIO/Globalmap" />-->
+      <remap from="/ORB3/globalmap" to="/BLIO/Globalmap" />
 
 
 
