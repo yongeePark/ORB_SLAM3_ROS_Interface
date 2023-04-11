@@ -124,6 +124,25 @@ ${realsense2_LIBRARY}
 ${PCL_LIBRARIES}
 )
 
+rosbuild_add_executable(rgbd_sub_topic
+src/ros_rgbd_sub_topic.cc
+)
+
+target_link_libraries(rgbd_sub_topic
+${LIBS}
+${realsense2_LIBRARY}
+${PCL_LIBRARIES}
+)
+
+rosbuild_add_executable(mono_sub_topic
+src/ros_mono_sub_topic.cc
+)
+
+target_link_libraries(mono_sub_topic
+${LIBS}
+${realsense2_LIBRARY}
+${PCL_LIBRARIES}
+)
 # # Node for monocular-inertial camera
 # rosbuild_add_executable(Mono_Inertial
 # src/ros_mono_inertial.cc
