@@ -1,0 +1,6 @@
+error /usr/local/include/sigslot/signal.hpp:969:33: error: ‘pmf’ was not declared in this scope
+
+sol)
+sed -i 's/++11/++14/g' CMakeLists.txt
+
+https://github.com/UZ-SLAMLab/ORB_SLAM3/issues/458
