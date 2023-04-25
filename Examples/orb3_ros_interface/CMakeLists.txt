@@ -30,14 +30,15 @@ endif()
 
 LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/../../../cmake_modules)
 
-find_package(OpenCV 3.2 REQUIRED)
-if(NOT OpenCV_FOUND)
-    message(WARNING "OpenCV 4.4.0 is not found")
-   find_package(OpenCV 2.4.3 QUIET)
-   if(NOT OpenCV_FOUND)
-      message(FATAL_ERROR "OpenCV > 2.4.3 not found.")
-   endif()
-endif()
+find_package(OpenCV 4.4 REQUIRED)
+# find_package(OpenCV 3.2 REQUIRED)
+# if(NOT OpenCV_FOUND)
+#     message(WARNING "OpenCV 4.4.0 is not found")
+#    find_package(OpenCV 2.4.3 QUIET)
+#    if(NOT OpenCV_FOUND)
+#       message(FATAL_ERROR "OpenCV > 2.4.3 not found.")
+#    endif()
+# endif()
 
 find_package(Eigen3 3.1.0 REQUIRED)
 find_package(Pangolin REQUIRED)
@@ -119,6 +120,26 @@ src/ros_rgbd_realsense_D435i.cc
 )
 
 target_link_libraries(rgbd_realsense
+${LIBS}
+${realsense2_LIBRARY}
+${PCL_LIBRARIES}
+)
+
+rosbuild_add_executable(rgbd_sub_topic
+src/ros_rgbd_sub_topic.cc
+)
+
+target_link_libraries(rgbd_sub_topic
+${LIBS}
+${realsense2_LIBRARY}
+${PCL_LIBRARIES}
+)
+
+rosbuild_add_executable(mono_sub_topic
+src/ros_mono_sub_topic.cc
+)
+
+target_link_libraries(mono_sub_topic
 ${LIBS}
 ${realsense2_LIBRARY}
 ${PCL_LIBRARIES}

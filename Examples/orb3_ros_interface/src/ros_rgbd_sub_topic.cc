@@ -15,7 +15,7 @@
 * You should have received a copy of the GNU General Public License along with ORB-SLAM3.
 * If not, see <http://www.gnu.org/licenses/>.
 */
-
+//ff
 #include <signal.h>
 #include <stdlib.h>
 #include <iostream>
@@ -177,7 +177,8 @@ int main(int argc, char **argv) {
     // image_transport::Subscriber sub_depth = it.subscribe("/camera/depth_registered/image_raw", 1, boost::bind(imageCallback, _1, _3));
 
     message_filters::Subscriber<sensor_msgs::Image> rgb_sub(nh,"/camera/color/image_raw", 1);
-    message_filters::Subscriber<sensor_msgs::Image> depth_sub(nh,"/camera/aligned_depth_to_color/image_raw", 1);
+    // message_filters::Subscriber<sensor_msgs::Image> depth_sub(nh,"/camera/aligned_depth_to_color/image_raw", 1);
+    message_filters::Subscriber<sensor_msgs::Image> depth_sub(nh,"/camera/depth/image_rect_raw", 1);
     typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> MySyncPolicy;
 
 
@@ -583,12 +584,13 @@ int main(int argc, char **argv) {
             //             1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
 
 
-
+            /*
             std::cout<<"current pose"<<std::endl
             
             <<"x : "<<current_base_pose.translation()(0,0)<<std::endl
             <<"y : "<<current_base_pose.translation()(1,0)<<std::endl
             <<"z : "<<current_base_pose.translation()(2,0)<<std::endl;
+            */
 
             // <<"========================"<<std::endl
             //<<"translation vector : "<< current_camera_pose.translation() <<std::endl

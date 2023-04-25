@@ -194,7 +194,7 @@ int main(int argc, char **argv) {
     image_transport::ImageTransport it(nh);
     image_transport::Publisher pub_image         = it.advertise("/camera/color/image_raw", 1);
     image_transport::Publisher pub_image_feature = it.advertise("/orb3_feature_image", 1);
-    image_transport::Publisher pub_depth         = it.advertise("/camera/depth/image_raw", 1);
+    image_transport::Publisher pub_depth         = it.advertise("/camera/depth/image_rect_raw", 1);
     sensor_msgs::ImagePtr image_msg;
     sensor_msgs::ImagePtr image_feature_msg;
     sensor_msgs::ImagePtr depth_msg;

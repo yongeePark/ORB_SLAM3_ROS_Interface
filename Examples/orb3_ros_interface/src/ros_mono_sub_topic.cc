@@ -396,8 +396,9 @@ int main(int argc, char **argv) {
     };
 
     */
-
+    std::cout<<"start system"<<std::endl;
     ORB_SLAM3::System SLAM(argv[1],argv[2],ORB_SLAM3::System::MONOCULAR,enable_pangolin);
+    std::cout<<"Start ORB"<<std::endl;
     float imageScale = SLAM.GetImageScale();
 
     double timestamp;
