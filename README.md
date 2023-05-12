@@ -1,3 +1,12 @@
+# Jaeyong Modification
+
+## How to build
+```
+./build.sh
+```
+
+
+
 # ORB-SLAM3
 
 ### V1.0, December 22th, 2021
