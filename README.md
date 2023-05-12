@@ -1,3 +1,15 @@
+# Jaeyong modification
+
+## How to build
+```
+./build.sh
+```
+## convenience
+```
+export ROS_PACKAGE_PATH=${ROS_PACKAGE_PATH}:/home/usrg/packages/ORB_SLAM3_ROS_Interface/Examples/orb3_ros_interface
+alias orb='cd /home/usrg/packages/ORB_SLAM3_ROS_Interface'
+```
+
 # ORB-SLAM3
 
 ### V1.0, December 22th, 2021
