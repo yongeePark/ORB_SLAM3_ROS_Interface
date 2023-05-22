@@ -551,7 +551,7 @@ int main(int argc, char **argv) {
         float rpy[3];
 
         current_pose.header.stamp = ros::Time::now();
-        current_pose.header.frame_id = "map";
+        current_pose.header.frame_id = "/map";
         current_pose.pose.position.x = current_base_pose.translation()(0,0);
         current_pose.pose.position.y = current_base_pose.translation()(1,0);
         current_pose.pose.position.z = current_base_pose.translation()(2,0);
