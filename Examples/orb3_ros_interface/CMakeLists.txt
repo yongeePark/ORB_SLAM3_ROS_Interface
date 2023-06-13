@@ -29,7 +29,7 @@ endif()
 
 LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/../../../cmake_modules)
 
-find_package(OpenCV 3.4 REQUIRED)
+find_package(OpenCV 3.4.1 REQUIRED)
 if(NOT OpenCV_FOUND)
     message(WARNING "OpenCV 4.1.0 is not found")
     #   find_package(OpenCV 2.4.3 QUIET)
@@ -41,7 +41,7 @@ endif()
 find_package(Eigen3 3.1.0 REQUIRED)
 find_package(Pangolin REQUIRED)
 
-find_package(realsense2)
+find_package(realsense2 2.48.0 REQUIRED)
 find_package(PCL REQUIRED)
 find_package(pcl_ros REQUIRED)
 
