@@ -180,15 +180,17 @@ int main(int argc, char **argv) {
         return 1;
     }
     }
+
+    // fps
+    int camera_fps;
+    if (!nh_param.getParam("/rgbd_realsense/camera_fps",camera_fps))
+    {
+        std::cout<<"Please set camera_fps"<<std::endl
+        <<"shut down the program"<<std::endl;
+        return 1;
+    }
     
-    // std::cout<<"use pangolin : "<<enable_pangolin<<std::endl;
-    // std::cout<<"end of the program"<<std::endl;
-    // while(ros::ok())
-    // {
-    //     ros::spinOnce();
-    //     sleep(10);
-    // }
-    // return 1;
+    
 
 // for image handling
     image_transport::ImageTransport it(nh);
@@ -262,11 +264,11 @@ int main(int argc, char **argv) {
     rs2::config cfg;
 
     // RGB stream
-    cfg.enable_stream(RS2_STREAM_COLOR,640, 480, RS2_FORMAT_RGB8, 30);
+    cfg.enable_stream(RS2_STREAM_COLOR,640, 480, RS2_FORMAT_RGB8, camera_fps);
 
     // Depth stream
     // cfg.enable_stream(RS2_STREAM_INFRARED, 1, 640, 480, RS2_FORMAT_Y8, 30);
-    cfg.enable_stream(RS2_STREAM_DEPTH,640, 480, RS2_FORMAT_Z16, 30);
+    cfg.enable_stream(RS2_STREAM_DEPTH,640, 480, RS2_FORMAT_Z16, camera_fps);
 
     // IMU stream
     cfg.enable_stream(RS2_STREAM_ACCEL, RS2_FORMAT_MOTION_XYZ32F); //, 250); // 63
@@ -645,19 +647,12 @@ int main(int argc, char **argv) {
         pub_depth.publish(depth_msg);
 
         // ***********************************************************************************
-        // std::cout<<"current index : "<<print_index<<std::endl;
-
-        
-    
-        
 
         // pub pointcloud
         vector<Eigen::Matrix<float,3,1>> global_points, local_points;
-        // global_points.clear();
-        // local_points.clear();
-        SLAM.GetPointCloud(global_points,local_points);
-
-        PublishPointCloud(global_points,local_points,global_pc_pub,local_pc_pub);
+        
+        // SLAM.GetPointCloud(global_points,local_points);
+        // PublishPointCloud(global_points,local_points,global_pc_pub,local_pc_pub);
 
 
         
