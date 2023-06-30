@@ -6,7 +6,7 @@
 
     <arg name="use_pangolin" default="false"/>
     <arg name="use_auto_exposure" default="true"/>
-    <arg name="ae_meanIntensitySetPoint" default="1500"/>
+    <arg name="ae_meanIntensitySetPoint" default="750"/>
 
     <arg name="cam_fps" default="15"/>
 
