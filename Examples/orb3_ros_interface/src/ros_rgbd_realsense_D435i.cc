@@ -444,6 +444,8 @@ int main(int argc, char **argv) {
     geometry_msgs::PoseStamped current_pose;
     nav_msgs::Odometry current_odom;
 
+    std::chrono::steady_clock::time_point start; 
+
     while (!SLAM.isShutDown() && ros::ok())
     {
         {
@@ -456,6 +458,11 @@ int main(int argc, char **argv) {
 #else
             std::chrono::monotonic_clock::time_point time_Start_Process = std::chrono::monotonic_clock::now();
 #endif
+
+            std::cout<<"======================================"<<std::endl;
+            std::cout<<"Got image set!"<<std::endl;
+
+            start = std::chrono::steady_clock::now();
 
             fs = fsSLAM;
 
@@ -472,6 +479,12 @@ int main(int argc, char **argv) {
 
         // Perform alignment here
         auto processed = align.process(fs);
+
+        std::chrono::steady_clock::time_point align_time = std::chrono::steady_clock::now();
+        std::chrono::duration<double> dt = align_time - start;
+        long long dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
+        std::cout<<"align is done!"<<std::endl;
+        std::cout<<"time consumed : "<<dt_ms<<" ms"<<std::endl;
 
         // Trying to get both other and aligned depth frames
         rs2::video_frame color_frame = processed.first(align_to);
@@ -518,6 +531,12 @@ int main(int argc, char **argv) {
 #endif
         // Pass the image to the SLAM system
         output = SLAM.TrackRGBD(im, depth, timestamp); //, vImuMeas); depthCV
+        
+        std::chrono::steady_clock::time_point track_time = std::chrono::steady_clock::now();
+        std::chrono::duration<double> dt2= track_time - align_time;
+        long long dt2_ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt2).count();
+        std::cout<<"track is done!"<<std::endl;
+        std::cout<<"time consumed : "<<dt2_ms<<" ms"<<std::endl;
 
         // ROS
         //publish
