@@ -1,6 +1,15 @@
 # Jaeyong Modification
 
 ## How to build
+
+1. Install Pangolin
+  Refer to below link
+  https://yongee.tistory.com/30
+
+2. Install OpenCV 4.5.5
+  Refer to below link
+  https://yongee.tistory.com/31
+3. 
 ```
 ./build.sh
 ```
