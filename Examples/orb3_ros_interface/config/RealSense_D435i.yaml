@@ -35,14 +35,14 @@ Stereo.ThDepth: 40.0
 Stereo.b: 0.0745
 
 # Depth map values factor
-RGBD.DepthMapFactor: 1000.0
+RGBD.DepthMapFactor: 750.0
 
 #--------------------------------------------------------------------------------------------
 # ORB Parameters
 #--------------------------------------------------------------------------------------------
 # ORB Extractor: Number of features per image
 # ORBextractor.nFeatures: 750
-ORBextractor.nFeatures: 1000
+ORBextractor.nFeatures: 3500
 
 # ORB Extractor: Scale factor between levels in the scale pyramid 	
 ORBextractor.scaleFactor: 1.2

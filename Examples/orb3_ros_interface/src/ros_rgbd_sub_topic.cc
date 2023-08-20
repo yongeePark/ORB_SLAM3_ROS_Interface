@@ -182,7 +182,7 @@ int main(int argc, char **argv) {
     typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> MySyncPolicy;
 
 
-    message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(10),rgb_sub, depth_sub);
+    message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(1000),rgb_sub, depth_sub);
     sync.registerCallback(boost::bind(&imageCallback, _1, _2));
 
     // ros param setting
@@ -485,7 +485,7 @@ int main(int argc, char **argv) {
 
 
 
-        // Publish pose and topic!
+        // Publish pose and odom topic!
         current_pose.header.stamp = ros::Time::now();
         current_pose.header.frame_id = "map";
         current_pose.pose.position.x = current_base_pose.translation()(0,0);
@@ -733,7 +733,8 @@ ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub)
 }
 void imageCallback(const sensor_msgs::ImageConstPtr& rgb_image, const sensor_msgs::ImageConstPtr& depth_image)
 {
-    std::cout<<"Image Callback!"<<std::endl;
+    // std::cout<<"image callback"<<std::endl;
+    //std::cout<<"Image Callback!"<<std::endl;
   // Convert RGB image to cv::Mat format
   cv_bridge::CvImagePtr cv_rgb_ptr;
   try
@@ -750,11 +751,17 @@ void imageCallback(const sensor_msgs::ImageConstPtr& rgb_image, const sensor_msg
   cv_bridge::CvImagePtr cv_depth_ptr;
   try
   {
+    // cv_depth_ptr = cv_bridge::toCvCopy(depth_image, sensor_msgs::image_encodings::TYPE_16UC1);
+    //ROS_INFO("Received depth image encoding: %s", depth_image->encoding.c_str());
+    // cv_depth_ptr->image.step = depth_image->step;
     cv_depth_ptr = cv_bridge::toCvCopy(depth_image, sensor_msgs::image_encodings::TYPE_16UC1);
+    
   }
   catch (cv_bridge::Exception& e)
   {
+    std::cout<<"Here?"<<std::endl;
     ROS_ERROR("cv_bridge exception: %s", e.what());
+    std::cout<<"here2?"<<std::endl;
     return;
   }
 
