@@ -37,7 +37,7 @@ LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules)
 #      message(FATAL_ERROR "OpenCV > 3.2 not found.")
 #   endif()
 
-find_package(OpenCV 4.4 REQUIRED)
+find_package(OpenCV 4.6 REQUIRED)
    if(NOT OpenCV_FOUND)
       message(FATAL_ERROR "OpenCV > 4.4 not found.")
    endif()

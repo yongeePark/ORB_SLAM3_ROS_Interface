@@ -43,7 +43,7 @@ find_package(OpenCV 4.4 REQUIRED)
 find_package(Eigen3 3.1.0 REQUIRED)
 find_package(Pangolin REQUIRED)
 
-find_package(realsense2)
+find_package(realsense2 REQUIRED)
 find_package(PCL REQUIRED)
 find_package(pcl_ros REQUIRED)
 
@@ -114,6 +114,7 @@ src/ros_rgbd.cc
 target_link_libraries(RGBD
 ${LIBS}
 )
+set_target_properties(RGBD PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/bin")
 
 rosbuild_add_executable(rgbd_realsense
 src/ros_rgbd_realsense_D435i.cc
@@ -124,6 +125,7 @@ ${LIBS}
 ${realsense2_LIBRARY}
 ${PCL_LIBRARIES}
 )
+set_target_properties(rgbd_realsense PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/bin")
 
 rosbuild_add_executable(rgbd_sub_topic
 src/ros_rgbd_sub_topic.cc
@@ -134,6 +136,7 @@ ${LIBS}
 ${realsense2_LIBRARY}
 ${PCL_LIBRARIES}
 )
+set_target_properties(rgbd_sub_topic PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/bin")
 
 rosbuild_add_executable(mono_sub_topic
 src/ros_mono_sub_topic.cc
@@ -144,6 +147,7 @@ ${LIBS}
 ${realsense2_LIBRARY}
 ${PCL_LIBRARIES}
 )
+set_target_properties(mono_sub_topic PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/bin")
 
 # # Node for monocular-inertial camera
 # rosbuild_add_executable(Mono_Inertial

@@ -3,17 +3,31 @@
 ## How to build
 
 1. Install Pangolin
+
   Refer to below link
+
   https://yongee.tistory.com/30
 
 2. Install OpenCV 4.5.5
+
   Refer to below link
+
   https://yongee.tistory.com/31
-3. 
+
+3. Install PCL-ROS
+  ```
+  sudo apt-get install ros-noetic-pcl-ros
+  ```
+4. Build
 ```
 ./build.sh
 ```
+5. Build ROS
 
+add below line to your ~/.bashrc file
+```
+export ROS_PACKAGE_PATH="/home/usrg/packages/ORB_SLAM3_ROS_Interface/Examples/orb3_ros_interface:$ROS_PACKAGE_PATH"
+```
 
 
 # ORB-SLAM3
