@@ -2,6 +2,12 @@
 
 ## How to build
 
+* Make sure that this package is NOT inside your ros workspace(ex. catkin_ws, etc)
+The ros package inside ORB-SLAM3 will be built independently.
+
+* If your opencv version is not 4.5.5,
+please modify OpenCV version in CMakelists.txt(both in root dir and ros package dir) accordingly.
+
 1. Install Pangolin
 
   Refer to below link
@@ -24,18 +30,29 @@
 
   https://yongee.tistory.com/117
   
-4. Build
+4. Build ORB-SLAM3
 ```
 ./build.sh
 ```
-5. Build ROS
+5. Build ROS package
 
 add below line to your ~/.bashrc file
 ```
 export ROS_PACKAGE_PATH="/home/usrg/packages/ORB_SLAM3_ROS_Interface/Examples/orb3_ros_interface:$ROS_PACKAGE_PATH"
 ```
 
+go to the orb3_ros_interface 'ros' package, and build
+```
+cd Examples/orb3_ros_interface/
+mkdir build && cd build
+cmake ..
+make
+```
 
+Now you can run!
+```
+roslaunch orb3_ros_interface rgbd_sub_topic.launch
+```
 # ORB-SLAM3
 
 ### V1.0, December 22th, 2021
