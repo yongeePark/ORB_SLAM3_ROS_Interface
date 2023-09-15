@@ -18,6 +18,12 @@
   ```
   sudo apt-get install ros-noetic-pcl-ros
   ```
+4. Install Realsense
+
+  Refer to below link
+
+  https://yongee.tistory.com/117
+  
 4. Build
 ```
 ./build.sh

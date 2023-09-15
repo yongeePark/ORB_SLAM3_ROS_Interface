@@ -71,6 +71,12 @@
         "__tuple": "cpp",
         "ios": "cpp",
         "locale": "cpp",
-        "queue": "cpp"
+        "queue": "cpp",
+        "bit": "cpp",
+        "numeric": "cpp",
+        "random": "cpp",
+        "list": "cpp",
+        "typeindex": "cpp",
+        "variant": "cpp"
     }
 }

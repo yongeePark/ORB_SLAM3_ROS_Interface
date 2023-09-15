@@ -106,8 +106,11 @@ namespace ORB_SLAM3
         thread threadF(&TwoViewReconstruction::FindFundamental,this,ref(vbMatchesInliersF), ref(SF), ref(F));
 
         // Wait until both threads have finished
-        threadH.join();
-        threadF.join();
+        threadH.detach();
+        threadF.detach();
+
+        // threadH.join();
+        // threadF.join();
 
         // Compute ratio of scores
         if(SH+SF == 0.f) return false;

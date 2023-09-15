@@ -12,8 +12,10 @@
     <!-- conversion node -->
     <node name="rgbd_sub_topic" pkg="orb3_ros_interface" type="rgbd_sub_topic" output="screen"
     args="$(arg path_to_orb)$(arg path_to_vocabulary) $(arg path_to_orb)$(arg path_to_settings)" >
+
       <remap from="/orb_pose" to="/scout/mavros/vision_pose/pose"/>
-      <remap from="/camera/aligned_depth_to_color/image_raw" to="/camera/depth/image_rect_raw"/>
+      <remap from="/camera/depth/image_rect_raw" to="/camera/aligned_depth_to_color/image_raw"/>
+
       <param name="enable_pangolin" type="bool" value="$(arg use_pangolin)" />
       <param name="enable_auto_exposure" type="bool" value="$(arg use_auto_exposure)" />
       <param name="ae_meanIntensitySetPoint" type="int" value="$(arg ae_meanIntensitySetPoint)" />
@@ -22,6 +24,9 @@
       <remap from="/orb_odom" to="/orb_odom_conversion"/>
       <remap from="/ORB3/globalmap" to="/ORB3_Conversion/globalmap"/> 
       <remap from="/ORB3/localmap"  to="/ORB3_Conversion/localmap"/> 
+
+      <!-- <remap from="/orb3_feature_image_from_orb" to="/orb3_feature_image_processed"/> -->
+
       
       
     </node>
@@ -32,7 +37,8 @@
     <node name="rgbd_sub_topic_original" pkg="orb3_ros_interface" type="rgbd_sub_topic" output="screen"
     args="$(arg path_to_orb)$(arg path_to_vocabulary) $(arg path_to_orb)$(arg path_to_settings)" >
       <remap from="/orb_pose" to="/scout/mavros/vision_pose/pose_original"/>
-      <remap from="/camera/aligned_depth_to_color/image_raw" to="/camera/depth/image_rect_raw"/>
+      <remap from="/camera/depth/image_rect_raw" to="/camera/aligned_depth_to_color/image_raw"/>
+
       <param name="enable_pangolin" type="bool" value="$(arg use_pangolin)" />
       <param name="enable_auto_exposure" type="bool" value="$(arg use_auto_exposure)" />
       <param name="ae_meanIntensitySetPoint" type="int" value="$(arg ae_meanIntensitySetPoint)" />

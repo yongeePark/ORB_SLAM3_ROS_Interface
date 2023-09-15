@@ -27,7 +27,8 @@
 
 #include <condition_variable>
 
-#include <opencv2/core/core.hpp>
+// #include <opencv2/opencv.hpp>
+// #include <opencv2/core/core.hpp>
 
 #include <librealsense2/rs.hpp>
 #include "librealsense2/rsutil.h"
@@ -164,6 +165,7 @@ int main(int argc, char **argv) {
     ros::Publisher global_pc_pub = nh.advertise<sensor_msgs::PointCloud2>("/ORB3/globalmap",1);
     ros::Publisher  local_pc_pub = nh.advertise<sensor_msgs::PointCloud2>("/ORB3/localmap",1);
 
+    ros::Rate loop_rate(15);
     // for image handling
     image_transport::ImageTransport it(nh);
     image_transport::Publisher pub_image         = it.advertise("/camera/color/image_raw_from_orb", 1);
@@ -454,8 +456,9 @@ int main(int argc, char **argv) {
 
 
     while (!SLAM.isShutDown() && ros::ok())
+    // while (ros::ok())
     {
-        
+        // std::cout<<"Check?"<<std::endl;
         ros::spinOnce(); // this is to get new image!
         // ros::spinOnce;
 
@@ -522,6 +525,7 @@ int main(int argc, char **argv) {
         mvbVO = vector<bool>(N,false);
         mvbMap = vector<bool>(N,false);
 
+
         SLAM.GetVOandMap(mvbVO,mvbMap);
         DrawFeature(im_feature,g_new_color_image,keypoints,imageScale,mvbVO,mvbMap);
 
@@ -534,11 +538,6 @@ int main(int argc, char **argv) {
         pub_image_feature.publish(image_feature_msg);
         // pub_depth.publish(depth_msg);
 
-
-
-        
-    
-        
 
         // pub pointcloud
         vector<Eigen::Matrix<float,3,1>> global_points, local_points;
@@ -600,6 +599,7 @@ int main(int argc, char **argv) {
         }
 
         // end of the loop
+        loop_rate.sleep();
     }
     cout << "System shutdown!\n";
 }
@@ -663,18 +663,21 @@ void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint>
     cv::Point2f point(100,100);
     // cv::circle(im_feature,point,2,cv::Scalar(0,255,0),-1);   
 
+    // cv::circle(im_feature,point,3,cv::Scalar(0,255,0),2);
 
     
     std::vector<cv::KeyPoint> keypoints_ = keypoints;
     std::vector<bool>         vbVO = mvbVO;
     std::vector<bool>         vbMap = mvbMap;
-    const float r = 5;
+    // const float r = 5;
+    const int r = 5;
     int n = keypoints_.size();
-    
+    // std::cout<<"keypoint size : "<<n<<std::endl;
     for(int i=0;i<n;i++)
     {
         if(vbVO[i] || vbMap[i])
         {
+            
             cv::Point2f pt1,pt2;
             cv::Point2f point;
             
@@ -687,7 +690,7 @@ void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint>
             pt2.y=py+r;
             
             cv::rectangle(im_feature,pt1,pt2,cv::Scalar(0,255,0));
-            cv::circle(im_feature,point,2,cv::Scalar(0,255,0),-1);
+            cv::circle(im_feature,point,2,cv::Scalar(0,255,0),1);
         }
     }
     
