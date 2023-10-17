@@ -60,6 +60,7 @@
 
 using namespace std;
 
+std::string g_nodename;
 cv::Mat g_new_color_image, g_new_depth_image;
 void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint> keypoints, float imageScale, vector<bool> mvbVO,vector<bool> mvbMap);
 void PublishPointCloud(vector<Eigen::Matrix<float,3,1>>& global_points, vector<Eigen::Matrix<float,3,1>>& local_points,
@@ -187,6 +188,7 @@ int main(int argc, char **argv) {
     message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(1000),rgb_sub, depth_sub);
     sync.registerCallback(boost::bind(&imageCallback, _1, _2));
 
+    g_nodename = ros::this_node::getName();
     // ros param setting
     bool enable_pangolin;
     if (!nh_param.getParam("/rgbd_sub_topic/enable_pangolin",enable_pangolin))
@@ -736,6 +738,10 @@ ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub)
 }
 void imageCallback(const sensor_msgs::ImageConstPtr& rgb_image, const sensor_msgs::ImageConstPtr& depth_image)
 {
+  // count variable
+  static int callback_count = 0;
+  callback_count++;
+
     // std::cout<<"image callback"<<std::endl;
     //std::cout<<"Image Callback!"<<std::endl;
   // Convert RGB image to cv::Mat format
@@ -762,13 +768,14 @@ void imageCallback(const sensor_msgs::ImageConstPtr& rgb_image, const sensor_msg
   }
   catch (cv_bridge::Exception& e)
   {
-    std::cout<<"Here?"<<std::endl;
-    ROS_ERROR("cv_bridge exception: %s", e.what());
-    std::cout<<"here2?"<<std::endl;
+    ROS_ERROR("cv_bridge exception: %s", e.what()); 
     return;
   }
 
   // Display RGB and depth images
   g_new_color_image = cv_rgb_ptr->image;
   g_new_depth_image = cv_depth_ptr->image;
+
+  std::cout<<"Node : "<<g_nodename<<std::endl
+  <<"Number of callback function call : "<<callback_count<<std::endl;
 }
