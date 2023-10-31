@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <launch>
-    <arg name="path_to_orb" default="/home/ee478/packages/ORB_SLAM3_ROS_Interface/"/>
+    <arg name="path_to_orb" default="/home/usrgtest/ORB_SLAM3_ROS_Interface/"/>
     <arg name="path_to_vocabulary" default="Vocabulary/ORBvoc.txt"/>
     <arg name="path_to_settings" default="Examples/RGB-D/RealSense_D435i.yaml"/>
 

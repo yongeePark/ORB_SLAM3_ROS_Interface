@@ -459,8 +459,6 @@ int main(int argc, char **argv) {
             std::chrono::monotonic_clock::time_point time_Start_Process = std::chrono::monotonic_clock::now();
 #endif
 
-            std::cout<<"======================================"<<std::endl;
-            std::cout<<"Got image set!"<<std::endl;
 
             start = std::chrono::steady_clock::now();
 
@@ -483,8 +481,6 @@ int main(int argc, char **argv) {
         std::chrono::steady_clock::time_point align_time = std::chrono::steady_clock::now();
         std::chrono::duration<double> dt = align_time - start;
         long long dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
-        std::cout<<"align is done!"<<std::endl;
-        std::cout<<"time consumed : "<<dt_ms<<" ms"<<std::endl;
 
         // Trying to get both other and aligned depth frames
         rs2::video_frame color_frame = processed.first(align_to);
@@ -535,8 +531,6 @@ int main(int argc, char **argv) {
         std::chrono::steady_clock::time_point track_time = std::chrono::steady_clock::now();
         std::chrono::duration<double> dt2= track_time - align_time;
         long long dt2_ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt2).count();
-        std::cout<<"track is done!"<<std::endl;
-        std::cout<<"time consumed : "<<dt2_ms<<" ms"<<std::endl;
 
         // ROS
         //publish
@@ -633,9 +627,7 @@ int main(int argc, char **argv) {
             //             1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
 
 
-
             std::cout<<"current pose"<<std::endl
-            
             <<"x : "<<current_base_pose.translation()(0,0)<<std::endl
             <<"y : "<<current_base_pose.translation()(1,0)<<std::endl
             <<"z : "<<current_base_pose.translation()(2,0)<<std::endl
@@ -798,7 +790,6 @@ ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub)
     pcl::PointCloud<pcl::PointXYZ>::Ptr local_pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
 
     //global
-    std::cout<<"global_points size : "<<global_points.size()<<std::endl;
     for(int i=0; i<global_points.size();i++)
     {
         pcl::PointXYZ pt;
