@@ -1,14 +1,62 @@
-# Jaeyong modification
-
+# EE405
 ## How to build
+
+* Make sure that this package is NOT inside your ros workspace(ex. catkin_ws, etc)
+The ros package inside ORB-SLAM3 will be built independently.
+
+* If your opencv version is not 3.4.1,
+please modify OpenCV version in CMakelists.txt(both in root dir and ros package dir) accordingly.
+
+1. Install Pangolin
+
+  Refer to below link
+
+  https://yongee.tistory.com/30
+
+2. Install OpenCV 3.4.1
+
+  Refer to below link
+
+  https://yongee.tistory.com/111
+
+3. Install PCL-ROS
+  ```
+  sudo apt-get install ros-melodic-pcl-ros
+  ```
+4. Install Realsense
+
+  Refer to below link, and install 2.48.0
+
+  https://yongee.tistory.com/117
+  
+4. Build ORB-SLAM3
 ```
 ./build.sh
 ```
-## convenience
+5. Build ROS package
+
+add below line to your ~/.bashrc file
 ```
-export ROS_PACKAGE_PATH=${ROS_PACKAGE_PATH}:/home/usrg/packages/ORB_SLAM3_ROS_Interface/Examples/orb3_ros_interface
-alias orb='cd /home/usrg/packages/ORB_SLAM3_ROS_Interface'
+export ROS_PACKAGE_PATH="[ORB_SLAM3_Install_PATH]/ORB_SLAM3_ROS_Interface/Examples/orb3_ros_interface:$ROS_PACKAGE_PATH"
 ```
+
+go to the orb3_ros_interface 'ros' package, and build
+```
+cd Examples/orb3_ros_interface/
+mkdir build && cd build
+cmake ..
+make
+```
+if error happens, please make your catkin_ws and do "catkin_make" first.
+6. Run
+
+Please modify package path in rgbd.launch file to your path(initial value is /home/usrgtest).
+```
+roslaunch orb3_ros_interface rgbd.launch
+```
+if what(): failed to set power state Error happens, refer to below link
+https://yongee.tistory.com/152
+
 
 # ORB-SLAM3
 
