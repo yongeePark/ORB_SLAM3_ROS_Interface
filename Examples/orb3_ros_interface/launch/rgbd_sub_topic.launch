@@ -10,7 +10,7 @@
     <!-- this will not be used when use_auto_exposure is false -->
     <arg name="ae_meanIntensitySetPoint" default="800"/>
 
-    <node name="rgbd_realsense" pkg="orb3_ros_interface" type="rgbd_realsense" output="screen"
+    <node name="rgbd_sub_topic" pkg="orb3_ros_interface" type="rgbd_sub_topic" output="screen"
     args="$(arg path_to_orb)$(arg path_to_vocabulary) $(arg path_to_orb)$(arg path_to_settings)" >
       <remap from="/orb_pose" to="/mavros/vision_pose/pose"/>
       <param name="enable_pangolin" type="bool" value="$(arg use_pangolin)" />

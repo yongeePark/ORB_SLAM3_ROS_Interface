@@ -31,7 +31,7 @@ LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/../../../cmake_modules)
 
 find_package(OpenCV 3.4.1 REQUIRED)
 if(NOT OpenCV_FOUND)
-    message(WARNING "OpenCV 4.1.0 is not found")
+    message(WARNING "OpenCV 3.4.1 is not found")
     #   find_package(OpenCV 2.4.3 QUIET)
     #  if(NOT OpenCV_FOUND)
     #      message(FATAL_ERROR "OpenCV > 2.4.3 not found.")
@@ -41,10 +41,11 @@ endif()
 find_package(Eigen3 3.1.0 REQUIRED)
 find_package(Pangolin REQUIRED)
 
-find_package(realsense2 2.48.0 REQUIRED)
 find_package(PCL REQUIRED)
+find_package(realsense2 2.48.0 REQUIRED)
+find_package(realsense2-gl REQUIRED)
 find_package(pcl_ros REQUIRED)
-
+message(realsense_dir) 
 include_directories(${PCL_INCLUDE_DIRS})
 
 include_directories(
@@ -65,9 +66,12 @@ ${PROJECT_SOURCE_DIR}/../../Thirdparty/g2o/lib/libg2o.so
 ${PROJECT_SOURCE_DIR}/../../lib/libORB_SLAM3.so
 -lboost_system
 )
-
+set(realsense_INCLUDE_DIR /usr/local/include/librealsense2)
+set(realsense-gl_INCLUDE_DIR /usr/local/include/librealsense2-gl)
+message(realsense dir : ${realsense_INCLUDE_DIR})
 include_directories(${PROJECT_NAME}
 ${realsense_INCLUDE_DIR}
+# ${realsense-gl_INCLUDE_DIR}
 )
 # target_link_libraries(${PROJECT_NAME}
 # ${realsense2_LIBRARY}
@@ -117,8 +121,22 @@ src/ros_rgbd_realsense_D435i.cc
 target_link_libraries(rgbd_realsense
 ${LIBS}
 ${realsense2_LIBRARY}
+${realsense2-gl_LIBRARY}
 ${PCL_LIBRARIES}
 )
+
+rosbuild_add_executable(rgbd_sub_topic
+src/ros_rgbd_sub_topic.cc
+)
+
+target_link_libraries(rgbd_sub_topic
+${LIBS}
+${realsense2_LIBRARY}
+${PCL_LIBRARIES}
+)
+set_target_properties(rgbd_sub_topic PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/bin")
+
+
 
 # # Node for monocular-inertial camera
 # rosbuild_add_executable(Mono_Inertial

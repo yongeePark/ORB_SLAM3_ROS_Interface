@@ -15,7 +15,7 @@
 * You should have received a copy of the GNU General Public License along with ORB-SLAM3.
 * If not, see <http://www.gnu.org/licenses/>.
 */
-
+//ff
 #include <signal.h>
 #include <stdlib.h>
 #include <iostream>
@@ -27,21 +27,24 @@
 
 #include <condition_variable>
 
-#include <opencv2/core/core.hpp>
+// #include <opencv2/opencv.hpp>
+// #include <opencv2/core/core.hpp>
 
 #include <librealsense2/rs.hpp>
-#include <librealsense2-gl/rs_processing_gl.hpp>
 #include "librealsense2/rsutil.h"
 
 #include <ros/ros.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <nav_msgs/Odometry.h>
-
-#include <System.h>
+#include <sensor_msgs/PointCloud2.h>
 
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <librealsense2/rs_advanced_mode.hpp> // this is for d435i Auto Exposure
+// #include <librealsense2/rs_option.h>
+#include <sensor_msgs/Image.h>
+// #include <sensor_msgs/image_encodings.h>
+
 
 #include <pcl/point_cloud.h>
 #include <pcl/PCLPointCloud2.h>
@@ -49,12 +52,20 @@
 #include <pcl/point_types.h>
 #include <pcl_ros/point_cloud.h>
 
+#include <System.h>
+
+#include <message_filters/subscriber.h>
+#include <message_filters/time_synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+
 using namespace std;
 
+std::string g_nodename;
+cv::Mat g_new_color_image, g_new_depth_image;
 void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint> keypoints, float imageScale, vector<bool> mvbVO,vector<bool> mvbMap);
 void PublishPointCloud(vector<Eigen::Matrix<float,3,1>>& global_points, vector<Eigen::Matrix<float,3,1>>& local_points,
 ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub);
-
+void imageCallback(const sensor_msgs::ImageConstPtr& rgb_image, const sensor_msgs::ImageConstPtr& depth_image);
 bool b_continue_session;
 
 void exit_loop_handler(int s){
@@ -117,6 +128,19 @@ static rs2_option get_sensor_option(const rs2::sensor& sensor)
 }
 
 int main(int argc, char **argv) {
+    // debug
+    /*
+    cout << endl
+             << "Number of arguments : " << argc << endl
+             << argv[0] << endl
+             << argv[1] << endl 
+             << argv[2] << endl
+             << argv[3] << endl
+             << argv[4] << endl
+             << "End of arguments" <<endl
+             << "Usage: ./mono_inertial_realsense_D435i path_to_vocabulary path_to_settings (trajectory_file_name)"
+             << endl;
+    */
 
     // if (argc < 3 || argc > 4) {
     if (argc < 3 ) { 
@@ -137,57 +161,62 @@ int main(int argc, char **argv) {
     ros::init(argc, argv,"ros_rgbd_realsense");
     ros::NodeHandle nh;
     ros::NodeHandle nh_param("~");
-
     ros::Publisher pose_pub = nh.advertise<geometry_msgs::PoseStamped>("orb_pose",1);
     ros::Publisher odom_pub = nh.advertise<nav_msgs::Odometry>("orb_odom",1);
-    int freq = 15;
-    ros::Rate loop_rate(freq);
-
     ros::Publisher global_pc_pub = nh.advertise<sensor_msgs::PointCloud2>("/ORB3/globalmap",1);
     ros::Publisher  local_pc_pub = nh.advertise<sensor_msgs::PointCloud2>("/ORB3/localmap",1);
 
+    ros::Rate loop_rate(15);
+    // for image handling
+    image_transport::ImageTransport it(nh);
+    image_transport::Publisher pub_image         = it.advertise("/camera/color/image_raw_from_orb", 1);
+    image_transport::Publisher pub_image_feature = it.advertise("/orb3_feature_image_from_orb", 1);
+    image_transport::Publisher pub_depth         = it.advertise("/camera/depth/image_raw_from_orb", 1);
+    sensor_msgs::ImagePtr image_msg;
+    sensor_msgs::ImagePtr image_feature_msg;
+    sensor_msgs::ImagePtr depth_msg;
+    
+    // image_transport::Subscriber sub_rgb   = it.subscribe("/camera/color/image_raw", 1,            boost::bind(imageCallback, _1, _2));
+    // image_transport::Subscriber sub_depth = it.subscribe("/camera/depth_registered/image_raw", 1, boost::bind(imageCallback, _1, _3));
+
+    message_filters::Subscriber<sensor_msgs::Image> rgb_sub(nh,"/camera/color/image_raw", 1);
+    // message_filters::Subscriber<sensor_msgs::Image> depth_sub(nh,"/camera/aligned_depth_to_color/image_raw", 1);
+    message_filters::Subscriber<sensor_msgs::Image> depth_sub(nh,"/camera/aligned_depth_to_color/image_raw", 1);
+    typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> MySyncPolicy;
+
+
+    message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(1000),rgb_sub, depth_sub);
+    sync.registerCallback(boost::bind(&imageCallback, _1, _2));
+
+    g_nodename = ros::this_node::getName();
+    // ros param setting
     bool enable_pangolin;
-    if (!nh_param.getParam("/rgbd_realsense/enable_pangolin",enable_pangolin))
+    if (!nh_param.getParam("/rgbd_sub_topic/enable_pangolin",enable_pangolin))
     {
         std::cout<<"It has not been decided whether to use Pangolin."<<std::endl
         <<"shut down the program"<<std::endl;
         return 1;
     }
     bool enable_auto_exposure;
-    if (!nh_param.getParam("/rgbd_realsense/enable_auto_exposure",enable_auto_exposure))
+    if (!nh_param.getParam("/rgbd_sub_topic/enable_auto_exposure",enable_auto_exposure))
     {
         std::cout<<"It has not been decided whether to use auto_exposure."<<std::endl
         <<"shut down the program"<<std::endl;
         return 1;
     }
-    int exposure_time_param;
-    if (!nh_param.getParam("/rgbd_realsense/exposure_time",exposure_time_param))
-    {
-        std::cout<<"It has not been decided the exposure_time."<<std::endl
-        <<"shut down the program"<<std::endl;
-        return 1;
-    }
-    uint32_t exposure_time = exposure_time_param;
     int ae_meanIntensitySetPoint;
     if(enable_auto_exposure)
     {
-        if (!nh_param.getParam("/rgbd_realsense/ae_meanIntensitySetPoint",ae_meanIntensitySetPoint))
-        {
-            std::cout<<"It has not been decided the number of the mean Intensity Set Point."<<std::endl
-            <<"shut down the program"<<std::endl;
-            return 1;
-        }
+    if (!nh_param.getParam("/rgbd_sub_topic/ae_meanIntensitySetPoint",ae_meanIntensitySetPoint))
+    {
+        std::cout<<"It has not been decided the number of the mean Intensity Set Point."<<std::endl
+        <<"shut down the program"<<std::endl;
+        return 1;
     }
+    }
+    
 
-    // for image handling
-    image_transport::ImageTransport it(nh);
-    image_transport::Publisher pub_image = it.advertise("/camera/color/image_raw", 1);
-    image_transport::Publisher pub_image_feature = it.advertise("/orb3_feature_image", 1);
-    image_transport::Publisher pub_depth = it.advertise("/camera/depth/image_raw", 1);
-    sensor_msgs::ImagePtr image_msg;
-    sensor_msgs::ImagePtr image_feature_msg;
-    sensor_msgs::ImagePtr depth_msg;
-
+    
 
 
     string file_name;
@@ -196,6 +225,7 @@ int main(int argc, char **argv) {
     if (argc == 4) {
         file_name = string(argv[argc - 1]);
         bFileName = true;
+        cout<<"file_name : "<<file_name<<endl;
     }
 
     struct sigaction sigIntHandler;
@@ -209,6 +239,7 @@ int main(int argc, char **argv) {
 
     double offset = 0; // ms
 
+    /*
     rs2::context ctx;
     rs2::device_list devices = ctx.query_devices();
     rs2::device selected_device;
@@ -252,16 +283,18 @@ int main(int argc, char **argv) {
     rs2::config cfg;
 
     // RGB stream
-    cfg.enable_stream(RS2_STREAM_COLOR,640, 480, RS2_FORMAT_RGB8, freq);
+    cfg.enable_stream(RS2_STREAM_COLOR,640, 480, RS2_FORMAT_RGB8, 30);
 
     // Depth stream
     // cfg.enable_stream(RS2_STREAM_INFRARED, 1, 640, 480, RS2_FORMAT_Y8, 30);
-    cfg.enable_stream(RS2_STREAM_DEPTH,640, 480, RS2_FORMAT_Z16, freq);
+    cfg.enable_stream(RS2_STREAM_DEPTH,640, 480, RS2_FORMAT_Z16, 30);
 
     // IMU stream
-    // cfg.enable_stream(RS2_STREAM_ACCEL, RS2_FORMAT_MOTION_XYZ32F); //, 250); // 63
-    // cfg.enable_stream(RS2_STREAM_GYRO, RS2_FORMAT_MOTION_XYZ32F); //, 400);
+    cfg.enable_stream(RS2_STREAM_ACCEL, RS2_FORMAT_MOTION_XYZ32F); //, 250); // 63
+    cfg.enable_stream(RS2_STREAM_GYRO, RS2_FORMAT_MOTION_XYZ32F); //, 400);
+    */
 
+    /*
     // IMU callback
     std::mutex imu_mutex;
     std::condition_variable cond_image_rec;
@@ -286,47 +319,34 @@ int main(int argc, char **argv) {
 
     // start and stop just to get necessary profile
     rs2::pipeline_profile pipe_profile = pipe.start(cfg);
+
     if(enable_auto_exposure == false)
     {
         pipe_profile.get_device().first<rs2::depth_sensor>().set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,false);
         pipe_profile.get_device().query_sensors()[1].set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,false);
-        // sensors.at(0).set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,false);
-        // sensors.at(0).set_option(rs2_option::RS2_OPTION_EXPOSURE,exposure_time);
+        //depth_sensor = profile.get_device().first_depth_sensor() //python
     }
     else
     {
         pipe_profile.get_device().first<rs2::depth_sensor>().set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE, true);
         pipe_profile.get_device().query_sensors()[1].set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,true);
-        /**
-        sensors.at(0).set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,true);
-        rs400::advanced_mode advnc_mode(selected_device);
-        STAEControl ae_ctrl = advnc_mode.get_ae_control();
-        ae_ctrl.meanIntensitySetPoint = ae_meanIntensitySetPoint;
-        advnc_mode.set_ae_control(ae_ctrl);
-
-        */
     }
+
+    */
+    // set AE
+
+    /*
     pipe.stop();
-
-    // Align depth and RGB frames
-    //Pipeline could choose a device that does not have a color stream
-    //If there is no color stream, choose to align depth to another stream
     rs2_stream align_to = find_stream_to_align(pipe_profile.get_streams());
-
-    // Create a rs2::align object.
-    // rs2::align allows us to perform alignment of depth frames to others frames
-    //The "align_to" is the stream type to which we plan to align depth frames.
     rs2::align align(align_to);
     rs2::frameset fsSLAM;
 
     auto imu_callback = [&](const rs2::frame& frame)
     {
-	//std::cout<<"realsense callback"<<std::endl;
         std::unique_lock<std::mutex> lock(imu_mutex);
 
         if(rs2::frameset fs = frame.as<rs2::frameset>())
         {
-	//	std::cout<<"Get frame"<<std::endl;
             count_im_buffer++;
 
             double new_timestamp_image = fs.get_timestamp()*1e-3;
@@ -346,19 +366,13 @@ int main(int argc, char **argv) {
             //Align depth and rgb takes long time, move it out of the interruption to avoid losing IMU measurements
             fsSLAM = fs;
 
-            /*
+            // *
             //Get processed aligned frame
-            auto processed = align.process(fs);
-
-
-            // Trying to get both other and aligned depth frames
-            rs2::video_frame color_frame = processed.first(align_to);
-            rs2::depth_frame depth_frame = processed.get_depth_frame();
-            //If one of them is unavailable, continue iteration
+            auto processed = align.process(fuse_pangolin continue iteration
             if (!depth_frame || !color_frame) {
                 cout << "Not synchronized depth and image\n";
                 return;
-            }
+            }argv
 
 
             imCV = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
@@ -366,7 +380,8 @@ int main(int argc, char **argv) {
 
             cv::Mat depthCV_8U;
             depthCV.convertTo(depthCV_8U,CV_8U,0.01);
-            cv::imshow("depth image", depthCV_8U);*/
+            cv::imshow("depth image", depthCV_8U);
+            // *
 
             timestamp_image = fs.get_timestamp()*1e-3;
             image_ready = true;
@@ -383,20 +398,12 @@ int main(int argc, char **argv) {
             lock.unlock();
             cond_image_rec.notify_all();
         }
-        //loop_rate.sleep();
-
     };
 
-
-
+    */
+    /*
     pipe_profile = pipe.start(cfg, imu_callback);
-
-
-
     rs2::stream_profile cam_stream = pipe_profile.get_stream(RS2_STREAM_COLOR);
-
-
-
 
     rs2_intrinsics intrinsics_cam = cam_stream.as<rs2::video_stream_profile>().get_intrinsics();
     width_img = intrinsics_cam.width;
@@ -410,13 +417,13 @@ int main(int argc, char **argv) {
     std::cout << " Coeff = " << intrinsics_cam.coeffs[0] << ", " << intrinsics_cam.coeffs[1] << ", " <<
     intrinsics_cam.coeffs[2] << ", " << intrinsics_cam.coeffs[3] << ", " << intrinsics_cam.coeffs[4] << ", " << std::endl;
     std::cout << " Model = " << intrinsics_cam.model << std::endl;
-
+    */
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
+
+    // I will not open pangolin viewer!
+    // ORB_SLAM3::System SLAM(argv[1],argv[2],ORB_SLAM3::System::RGBD, true, 0, file_name);
     ORB_SLAM3::System SLAM(argv[1],argv[2],ORB_SLAM3::System::RGBD, enable_pangolin, 0, file_name);
-
-
-    std::cout << " SLAM system is created "<<std::endl;
     float imageScale = SLAM.GetImageScale();
 
     double timestamp;
@@ -441,135 +448,51 @@ int main(int argc, char **argv) {
                 0.0f, -1.0f,  0.0f,  0.0f,
                 0.0f,  0.0f,  0.0f,  1.0f; // x 90, and z 90
     
-    // ==============================================================================
     // main loop
     int print_index=0;
-    int pointcloud_pub_index=0;
     geometry_msgs::PoseStamped current_pose;
     nav_msgs::Odometry current_odom;
 
-    std::chrono::steady_clock::time_point start; 
+    vector<Eigen::Matrix<float,3,1>> global_points;
+    vector<Eigen::Matrix<float,3,1>> local_points;
+
 
     while (!SLAM.isShutDown() && ros::ok())
+    // while (ros::ok())
     {
-        {
-            std::unique_lock<std::mutex> lk(imu_mutex);
-            if(!image_ready)
-                cond_image_rec.wait(lk);
+        // std::cout<<"Check?"<<std::endl;
+        ros::spinOnce(); // this is to get new image!
+        // ros::spinOnce;
 
-#ifdef COMPILEDWITHC11
-            std::chrono::steady_clock::time_point time_Start_Process = std::chrono::steady_clock::now();
-#else
-            std::chrono::monotonic_clock::time_point time_Start_Process = std::chrono::monotonic_clock::now();
-#endif
-
-
-            start = std::chrono::steady_clock::now();
-
-            fs = fsSLAM;
-
-            if(count_im_buffer>1)
-                cout << count_im_buffer -1 << " dropped frs\n";
-            count_im_buffer = 0;
-
-            timestamp = timestamp_image;
-            im = imCV.clone();
-            depth = depthCV.clone();
-
-            image_ready = false;
-        }
-
-        // Perform alignment here
-        auto processed = align.process(fs);
-
-        std::chrono::steady_clock::time_point align_time = std::chrono::steady_clock::now();
-        std::chrono::duration<double> dt = align_time - start;
-        long long dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
-	std::cout<<"align time : "<<dt_ms<<std::endl;
-
-        // Trying to get both other and aligned depth frames
-        rs2::video_frame color_frame = processed.first(align_to);
-        rs2::depth_frame depth_frame = processed.get_depth_frame();
-
-        im = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
-        depth = cv::Mat(cv::Size(width_img, height_img), CV_16U, (void*)(depth_frame.get_data()), cv::Mat::AUTO_STEP);
-
-        /*cv::Mat depthCV_8U;
-        depthCV.convertTo(depthCV_8U,CV_8U,0.01);
-        cv::imshow("depth image", depthCV_8U);*/
-        //cv::imshow("depth image",depth);
         if(imageScale != 1.f)
         {
-#ifdef REGISTER_TIMES
-    #ifdef COMPILEDWITHC11
-            std::chrono::steady_clock::time_point t_Start_Resize = std::chrono::steady_clock::now();
-    #else
-            std::chrono::monotonic_clock::time_point t_Start_Resize = std::chrono::monotonic_clock::now();
-    #endif
-#endif
             int width = im.cols * imageScale;
             int height = im.rows * imageScale;
             cv::resize(im, im, cv::Size(width, height));
             cv::resize(depth, depth, cv::Size(width, height));
 
-#ifdef REGISTER_TIMES
-    #ifdef COMPILEDWITHC11
-            std::chrono::steady_clock::time_point t_End_Resize = std::chrono::steady_clock::now();
-    #else
-            std::chrono::monotonic_clock::time_point t_End_Resize = std::chrono::monotonic_clock::now();
-    #endif
-            t_resize = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(t_End_Resize - t_Start_Resize).count();
-            SLAM.InsertResizeTime(t_resize);
-#endif
         }
 
-#ifdef REGISTER_TIMES
-    #ifdef COMPILEDWITHC11
-        std::chrono::steady_clock::time_point t_Start_Track = std::chrono::steady_clock::now();
-    #else
-        std::chrono::monotonic_clock::time_point t_Start_Track = std::chrono::monotonic_clock::now();
-    #endif
-#endif
         // Pass the image to the SLAM system
-        output = SLAM.TrackRGBD(im, depth, timestamp); //, vImuMeas); depthCV
-        
-        std::chrono::steady_clock::time_point track_time = std::chrono::steady_clock::now();
-        std::chrono::duration<double> dt2= track_time - align_time;
-        long long dt2_ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt2).count();
+        // ******************************************************************************
+        // output = SLAM.TrackRGBD(im, depth, timestamp); //, vImuMeas); depthCV
+        output = SLAM.TrackRGBD(g_new_color_image, g_new_depth_image, timestamp); //, vImuMeas); depthCV
+        // ******************************************************************************
 
         // ROS
         //publish
         // current pose based on camera frame, whose z axis is going foward!
         // current_camera_pose = output.inverse().matrix() * changer;
         Eigen::Matrix4f current_camera_pose = output.inverse().matrix();
-        // Sophus::SE3f current_base_pose(current_camera_pose * changer);
         Sophus::SE3f current_base_pose(changer * current_camera_pose);
-        // Sophus::SE3f current_base_pose(current_camera_pose);
-        // Sophus::SO3f aligned_heading(changer * current_camera_pose);
-        // Sophus::SE3f current_camera_pose, current_base_pose;
-        // Eigen::Quaternionf q = current_base_pose.so3().unit_quaternion();
-        // Eigen::Quaternionf q = output.inverse().so3().unit_quaternion();
-        // Eigen::Quaternionf q(1,0,0,0);  // w,x,y,z
         Eigen::Quaternionf q(0.5, 0.5, -0.5, 0.5);
         q = current_base_pose.so3().unit_quaternion() * q;
-        // q = q * output.inverse().so3().unit_quaternion();
-        /*
-        rpyfromquaternion (q);
-        oring r = r;
-        oring p = p;
-        oring q =q;
-        
-        trans r = y
-        trans p = r
-        trans y = r
 
-        quatfromrpy (trans r p y)
-        */
 
-        float rpy[3];
 
+        // Publish pose and odom topic!
         current_pose.header.stamp = ros::Time::now();
-        current_pose.header.frame_id = "/map";
+        current_pose.header.frame_id = "map";
         current_pose.pose.position.x = current_base_pose.translation()(0,0);
         current_pose.pose.position.y = current_base_pose.translation()(1,0);
         current_pose.pose.position.z = current_base_pose.translation()(2,0);
@@ -590,17 +513,49 @@ int main(int argc, char **argv) {
         current_odom.pose.pose.orientation.z = q.z();
         current_odom.pose.pose.orientation.w = q.w();
 
-        // current_pose.pose.orientation.x = 
         pose_pub.publish(current_pose);
         odom_pub.publish(current_odom);
+        
+                // Publish image
+        
+        // reference! DO NOT UNCOMMENT BELOW 2 LINES!!!
+        //im = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
+        //depth = cv::Mat(cv::Size(width_img, heightdepth_registered_img), CV_16U, (void*)(depth_frame.get_data()), cv::Mat::AUTO_STEP);
+        std::vector<cv::KeyPoint> keypoints = SLAM.GetTrackedKeyPointsUn();
+        vector<bool> mvbMap, mvbVO;
+        int N = keypoints.size();
+        mvbVO = vector<bool>(N,false);
+        mvbMap = vector<bool>(N,false);
 
 
+        SLAM.GetVOandMap(mvbVO,mvbMap);
+        DrawFeature(im_feature,g_new_color_image,keypoints,imageScale,mvbVO,mvbMap);
+
+        image_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im).toImageMsg();
+        image_feature_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im_feature).toImageMsg();
+        depth_msg = cv_bridge::CvImage(std_msgs::Header(), "mono16", depth).toImageMsg();
+
+        // draw features in the image
+        // pub_image.publish(image_msg);
+        pub_image_feature.publish(image_feature_msg);
+        // pub_depth.publish(depth_msg);
 
 
+        // pub pointcloud
+	/*
+        vector<Eigen::Matrix<float,3,1>> global_points, local_points;
+        SLAM.GetPointCloud(global_points,local_points);
+        PublishPointCloud(global_points,local_points,global_pc_pub,local_pc_pub);
+	*/
 
-
-
+        
+        if (!ros::ok())
+        {
+            std::cout<<"ros shutdown!"<<std::endl;
+            break;
+        }
         // show output
+        print_index++;
         if(ros::ok() && print_index >  5 )
         {
             // Eigen::Matrix3f rotation_matrix = output.so3().matrix();
@@ -608,7 +563,7 @@ int main(int argc, char **argv) {
             // std::cout<<"translation vector : "<< output.translation()
 
             /*
-            inline void getEulerAnglesFromQuaternion(const Eigen::Quaternion<double>& q,
+            inline void getEulerAnglesFromQuaterniondepth_registered(const Eigen::Quaternion<double>& q,
                                          Eigen::Vector3d* euler_angles) {
             {
                 assert(euler_angles != NULL);
@@ -632,69 +587,23 @@ int main(int argc, char **argv) {
             //             1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
 
 
+            /*
             std::cout<<"current pose"<<std::endl
+            
             <<"x : "<<current_base_pose.translation()(0,0)<<std::endl
             <<"y : "<<current_base_pose.translation()(1,0)<<std::endl
-            <<"z : "<<current_base_pose.translation()(2,0)<<std::endl
-            <<"========================"<<std::endl
+            <<"z : "<<current_base_pose.translation()(2,0)<<std::endl;
+            */
+
+            // <<"========================"<<std::endl
             //<<"translation vector : "<< current_camera_pose.translation() <<std::endl
             // << " rotation : "<<rpy[0] <<", "<<rpy[1]<<", "<<rpy[2] << std::endl;
-            << " quaternion(x,y,z,w) : "<<q.x() <<", "<<q.y()<<", "<<q.z() <<", "<<q.w()<< std::endl;
+            // << " quaternion(x,y,z,w) : "<<q.x() <<", "<<q.y()<<", "<<q.z() <<", "<<q.w()<< std::endl;
             print_index=0;
         }
-        // Publish image
-        
-        // reference! DO NOT UNCOMMENT BELOW 2 LINES!!!
-        //im = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
-        //depth = cv::Mat(cv::Size(width_img, height_img), CV_16U, (void*)(depth_frame.get_data()), cv::Mat::AUTO_STEP);
 
-        std::vector<cv::KeyPoint> keypoints = SLAM.GetTrackedKeyPointsUn();
-        vector<bool> mvbMap, mvbVO;
-        int N = keypoints.size();
-        mvbVO = vector<bool>(N,false);
-        mvbMap = vector<bool>(N,false);
-
-        SLAM.GetVOandMap(mvbVO,mvbMap);
-        DrawFeature(im_feature,im,keypoints,imageScale,mvbVO,mvbMap);
-
-        image_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im).toImageMsg();
-        image_feature_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im_feature).toImageMsg();
-        depth_msg = cv_bridge::CvImage(std_msgs::Header(), "mono16", depth).toImageMsg();
-        pub_image.publish(image_msg);
-        pub_image_feature.publish(image_feature_msg);
-        pub_depth.publish(depth_msg);
-
-        // ***********************************************************************************
-        // pub pointcloud
-
-        if(ros::ok() && pointcloud_pub_index > 15 )
-        {
-            vector<Eigen::Matrix<float,3,1>> global_points, local_points;
-            // global_points.clear();
-            // local_points.clear();
-            SLAM.GetPointCloud(global_points,local_points);
-
-            PublishPointCloud(global_points,local_points,global_pc_pub,local_pc_pub);
-            pointcloud_pub_index = 0;
-        }
-
-        print_index++;
-        pointcloud_pub_index++;
-        if (!ros::ok())
-        {
-            std::cout<<"ros shutdown!"<<std::endl;
-            break;
-        }
-
-#ifdef REGISTER_TIMES
-    #ifdef COMPILEDWITHC11
-        std::chrono::steady_clock::time_point t_End_Track = std::chrono::steady_clock::now();
-    #else
-        std::chrono::monotonic_clock::time_point t_End_Track = std::chrono::monotonic_clock::now();
-    #endif
-        t_track = t_resize + std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(t_End_Track - t_Start_Track).count();
-        SLAM.InsertTrackTime(t_track);
-#endif
+        // end of the loop
+        loop_rate.sleep();
     }
     cout << "System shutdown!\n";
 }
@@ -753,23 +662,32 @@ bool profile_changed(const std::vector<rs2::stream_profile>& current, const std:
 void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint> keypoints, float imageScale, vector<bool> mvbVO,vector<bool> mvbMap)
 {
     // copy IMAGE
-    im.copyTo(im_feature);
+    cv::Mat temp_mat;
+    im.copyTo(temp_mat);
+    //std::cout<<"Convert Color"<<std::endl;
+    std::cout<<"shape : "<<im.channels()<<std::endl;
+    cv::cvtColor(im, temp_mat, cv::COLOR_BGR2GRAY);
+//	std::cout<<"here?"<<std::endl;
+    cv::cvtColor(temp_mat, im_feature, cv::COLOR_GRAY2BGR);
 
     cv::Point2f point(100,100);
     // cv::circle(im_feature,point,2,cv::Scalar(0,255,0),-1);   
 
+    // cv::circle(im_feature,point,3,cv::Scalar(0,255,0),2);
 
     
     std::vector<cv::KeyPoint> keypoints_ = keypoints;
     std::vector<bool>         vbVO = mvbVO;
     std::vector<bool>         vbMap = mvbMap;
-    const float r = 5;
+    // const float r = 5;
+    const int r = 5;
     int n = keypoints_.size();
-    
+    // std::cout<<"keypoint size : "<<n<<std::endl;
     for(int i=0;i<n;i++)
     {
         if(vbVO[i] || vbMap[i])
         {
+            
             cv::Point2f pt1,pt2;
             cv::Point2f point;
             
@@ -782,7 +700,7 @@ void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint>
             pt2.y=py+r;
             
             cv::rectangle(im_feature,pt1,pt2,cv::Scalar(0,255,0));
-            cv::circle(im_feature,point,2,cv::Scalar(0,255,0),-1);
+            cv::circle(im_feature,point,2,cv::Scalar(0,255,0),1);
         }
     }
     
@@ -811,17 +729,61 @@ ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub)
         pt.y = -local_points[i](0,0);
         pt.z = -local_points[i](1,0);
         global_pointcloud->points.push_back(pt);
-        // local_pointcloud->points.push_back(pt); 
+         local_pointcloud->points.push_back(pt); 
     }
     sensor_msgs::PointCloud2 global_map_msg;
+    sensor_msgs::PointCloud2 local_map_msg;
     pcl::toROSMsg(*global_pointcloud,global_map_msg);
+    pcl::toROSMsg(*local_pointcloud,local_map_msg);
+    
     global_map_msg.header.frame_id = "map";
     global_map_msg.header.stamp = ros::Time::now();
     global_pc_pub.publish(global_map_msg);
     
-    // sensor_msgs::PointCloud2 local_map_msg;
-    // pcl::toROSMsg(*local_pointcloud,local_map_msg);
-    // local_map_msg.header.frame_id = "map";
-    // local_map_msg.header.stamp = ros::Time::now();
-    // local_pc_pub.publish(local_map_msg);
+    local_map_msg.header.frame_id = "map";
+    local_map_msg.header.stamp = ros::Time::now();
+    local_pc_pub.publish(local_map_msg);
+}
+void imageCallback(const sensor_msgs::ImageConstPtr& rgb_image, const sensor_msgs::ImageConstPtr& depth_image)
+{
+  // count variable
+  //static int callback_count = 0;
+  //callback_count++;
+
+    // std::cout<<"image callback"<<std::endl;
+    //std::cout<<"Image Callback!"<<std::endl;
+  // Convert RGB image to cv::Mat format
+  cv_bridge::CvImagePtr cv_rgb_ptr;
+  try
+  {
+    cv_rgb_ptr = cv_bridge::toCvCopy(rgb_image, sensor_msgs::image_encodings::BGR8);
+  }
+  catch (cv_bridge::Exception& e)
+  {
+    ROS_ERROR("cv_bridge exception: %s", e.what());
+    return;
+  }
+
+  // Convert depth image to cv::Mat format
+  cv_bridge::CvImagePtr cv_depth_ptr;
+  try
+  {
+    // cv_depth_ptr = cv_bridge::toCvCopy(depth_image, sensor_msgs::image_encodings::TYPE_16UC1);
+    //ROS_INFO("Received depth image encoding: %s", depth_image->encoding.c_str());
+    // cv_depth_ptr->image.step = depth_image->step;
+    cv_depth_ptr = cv_bridge::toCvCopy(depth_image, sensor_msgs::image_encodings::TYPE_16UC1);
+    
+  }
+  catch (cv_bridge::Exception& e)
+  {
+    ROS_ERROR("cv_bridge exception: %s", e.what()); 
+    return;
+  }
+
+  // Display RGB and depth images
+  g_new_color_image = cv_rgb_ptr->image;
+  g_new_depth_image = cv_depth_ptr->image;
+
+  //std::cout<<"Node : "<<g_nodename<<std::endl
+  //<<"Number of callback function call : "<<callback_count<<std::endl;
 }
