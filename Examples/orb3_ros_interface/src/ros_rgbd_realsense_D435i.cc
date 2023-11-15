@@ -29,9 +29,9 @@
 
 #include <opencv2/core/core.hpp>
 
-#include <librealsense2/rs.hpp>
-#include <librealsense2-gl/rs_processing_gl.hpp>
-#include "librealsense2/rsutil.h"
+#include </usr/local/include/librealsense2/rs.hpp>
+//#include <librealsense2-gl/rs_processing_gl.hpp>
+#include "/usr/local/include/librealsense2/rsutil.h"
 
 #include <ros/ros.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -485,7 +485,7 @@ int main(int argc, char **argv) {
         std::chrono::steady_clock::time_point align_time = std::chrono::steady_clock::now();
         std::chrono::duration<double> dt = align_time - start;
         long long dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
-	std::cout<<"align time : "<<dt_ms<<std::endl;
+	//std::cout<<"align time : "<<dt_ms<<std::endl;
 
         // Trying to get both other and aligned depth frames
         rs2::video_frame color_frame = processed.first(align_to);
@@ -658,8 +658,13 @@ int main(int argc, char **argv) {
         DrawFeature(im_feature,im,keypoints,imageScale,mvbVO,mvbMap);
 
         image_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im).toImageMsg();
+	image_msg->header.frame_id = "/camera_depth_optical_frame";
+	
         image_feature_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im_feature).toImageMsg();
+
         depth_msg = cv_bridge::CvImage(std_msgs::Header(), "mono16", depth).toImageMsg();
+	depth_msg->header.frame_id = "/camera_depth_optical_frame";
+
         pub_image.publish(image_msg);
         pub_image_feature.publish(image_feature_msg);
         pub_depth.publish(depth_msg);
@@ -753,12 +758,12 @@ bool profile_changed(const std::vector<rs2::stream_profile>& current, const std:
 void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint> keypoints, float imageScale, vector<bool> mvbVO,vector<bool> mvbMap)
 {
     // copy IMAGE
-    im.copyTo(im_feature);
+    //im.copyTo(im_feature);
+    cv::cvtColor(im,im_feature,cv::COLOR_BGR2GRAY);
+    cv::cvtColor(im_feature,im_feature,cv::COLOR_GRAY2BGR);
 
     cv::Point2f point(100,100);
     // cv::circle(im_feature,point,2,cv::Scalar(0,255,0),-1);   
-
-
     
     std::vector<cv::KeyPoint> keypoints_ = keypoints;
     std::vector<bool>         vbVO = mvbVO;

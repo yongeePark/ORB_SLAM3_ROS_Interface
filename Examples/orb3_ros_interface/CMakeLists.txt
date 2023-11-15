@@ -42,10 +42,8 @@ find_package(Eigen3 3.1.0 REQUIRED)
 find_package(Pangolin REQUIRED)
 
 find_package(PCL REQUIRED)
-find_package(realsense2 2.48.0 REQUIRED)
-find_package(realsense2-gl REQUIRED)
+find_package(realsense2 2.48.0 EXACT REQUIRED)
 find_package(pcl_ros REQUIRED)
-message(realsense_dir) 
 include_directories(${PCL_INCLUDE_DIRS})
 
 include_directories(
@@ -66,11 +64,13 @@ ${PROJECT_SOURCE_DIR}/../../Thirdparty/g2o/lib/libg2o.so
 ${PROJECT_SOURCE_DIR}/../../lib/libORB_SLAM3.so
 -lboost_system
 )
-set(realsense_INCLUDE_DIR /usr/local/include/librealsense2)
-set(realsense-gl_INCLUDE_DIR /usr/local/include/librealsense2-gl)
-message(realsense dir : ${realsense_INCLUDE_DIR})
+#set(realsense_INCLUDE_DIR /usr/local/include/librealsense2)
+#set(realsense-gl_INCLUDE_DIR /usr/local/include/librealsense2-gl)
+message(realsense_dir : ${realsense2_INCLUDE_DIR})
+message(realsense_lib : ${realsense2_LIBRARY})
+
 include_directories(${PROJECT_NAME}
-${realsense_INCLUDE_DIR}
+${realsense2_INCLUDE_DIR}
 # ${realsense-gl_INCLUDE_DIR}
 )
 # target_link_libraries(${PROJECT_NAME}
@@ -113,6 +113,8 @@ src/ros_rgbd.cc
 target_link_libraries(RGBD
 ${LIBS}
 )
+set_target_properties(RGBD PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/bin")
+
 
 rosbuild_add_executable(rgbd_realsense
 src/ros_rgbd_realsense_D435i.cc
@@ -121,9 +123,10 @@ src/ros_rgbd_realsense_D435i.cc
 target_link_libraries(rgbd_realsense
 ${LIBS}
 ${realsense2_LIBRARY}
-${realsense2-gl_LIBRARY}
+#${realsense2-gl_LIBRARY}
 ${PCL_LIBRARIES}
 )
+set_target_properties(rgbd_realsense PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/bin")
 
 rosbuild_add_executable(rgbd_sub_topic
 src/ros_rgbd_sub_topic.cc
