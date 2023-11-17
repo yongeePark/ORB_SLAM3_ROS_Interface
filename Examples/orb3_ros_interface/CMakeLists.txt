@@ -74,37 +74,24 @@ add_definitions(${PCL_DEFINITIONS})
 include_directories(${PROJECT_NAME}
 ${realsense_INCLUDE_DIR}
 )
-# target_link_libraries(${PROJECT_NAME}
-# ${realsense2_LIBRARY}
-# )
-# # Node for monocular camera
-# rosbuild_add_executable(Mono
-# src/ros_mono.cc
-# )
 
-# target_link_libraries(Mono
-# ${LIBS}
-# )
+# tensorRT
+find_package(CUDA REQUIRED)
+list(APPEND PLUGINS "nvinfer")
+list(APPEND PLUGINS "nvonnxparser")
+list(APPEND PLUGINS "nvparsers")
 
-# Node for monocular camera (Augmented Reality Demo)
-#rosbuild_add_executable(MonoAR
-#src/AR/ros_mono_ar.cc
-#src/AR/ViewerAR.h
-#src/AR/ViewerAR.cc
-#)
+foreach(libName ${PLUGINS})
+    find_library(${libName}_lib NAMES ${libName} "/usr" PATH_SUFFIXES lib)
+    list(APPEND PLUGIN_LIBS "${${libName}_lib}")
+endforeach()
 
-#target_link_libraries(MonoAR
-#${LIBS}
-#)
-
-# # Node for stereo camera
-# rosbuild_add_executable(Stereo
-# src/ros_stereo.cc
-# )
-
-# target_link_libraries(Stereo
-# ${LIBS}
-# )
+include_directories(
+    ${CUDA_INCLUDE_DIRS}
+    ${CUDNN_ROOT_DIR}/include
+   #  include/trtapi
+)
+include_directories(/usr/lib/aarch64-linux-gnu)
 
 # Node for RGB-D camera
 rosbuild_add_executable(RGBD
@@ -149,20 +136,17 @@ ${PCL_LIBRARIES}
 )
 set_target_properties(mono_sub_topic PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/bin")
 
-# # Node for monocular-inertial camera
-# rosbuild_add_executable(Mono_Inertial
-# src/ros_mono_inertial.cc
-# )
+rosbuild_add_executable(rgbd_trt
+src/ros_rgbd_realsense_trt.cc
+# include/trtapi/engine.cpp
+)
 
-# target_link_libraries(Mono_Inertial
-# ${LIBS}
-# )
-
-# # Node for stereo-inertial camera
-# rosbuild_add_executable(Stereo_Inertial
-# src/ros_stereo_inertial.cc
-# )
-
-# target_link_libraries(Stereo_Inertial
-# ${LIBS}
-# )
+target_link_libraries(rgbd_trt
+${LIBS}
+${realsense2_LIBRARY}
+${PCL_LIBRARIES}
+# PLUGIN_LIBSPLUGIN_LIBS
+${PLUGIN_LIBS}
+${CUDA_LIBRARIES}
+)
+set_target_properties(rgbd_trt PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/bin")

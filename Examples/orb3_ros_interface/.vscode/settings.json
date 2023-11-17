@@ -77,6 +77,9 @@
         "random": "cpp",
         "list": "cpp",
         "typeindex": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "any": "cpp",
+        "codecvt": "cpp",
+        "unordered_set": "cpp"
     }
 }
