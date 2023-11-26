@@ -41,6 +41,7 @@
 
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/CameraInfo.h>
 #include <librealsense2/rs_advanced_mode.hpp> // this is for d435i Auto Exposure
 
 #include <pcl/point_cloud.h>
@@ -188,6 +189,10 @@ int main(int argc, char **argv) {
     sensor_msgs::ImagePtr image_feature_msg;
     sensor_msgs::ImagePtr depth_msg;
 
+    // MSJ
+    ros::Publisher color_info_pub = nh.advertise<sensor_msgs::CameraInfo>("/camera/color/camera_info", 1);
+    
+
 
 
     string file_name;
@@ -224,6 +229,9 @@ int main(int argc, char **argv) {
     int index = 0;
     // We can now iterate the sensors and print their names
     for (rs2::sensor sensor : sensors)
+    {
+	if (sensor.supports(RS2_CAMERA_INFO_NAME))
+            std::cout << "Sensor: " << index << ", name: " << sensor.get_info(RS2_CAMERA_INFO_NAME) << std::endl;
         if (sensor.supports(RS2_CAMERA_INFO_NAME)) {
             ++index;
             if (index == 1) {
@@ -244,6 +252,7 @@ int main(int argc, char **argv) {
             }
 
         }
+    }
 
     // Declare RealSense pipeline, encapsulating the actual device and sensors
     rs2::pipeline pipe;
@@ -288,10 +297,20 @@ int main(int argc, char **argv) {
     rs2::pipeline_profile pipe_profile = pipe.start(cfg);
     if(enable_auto_exposure == false)
     {
-        pipe_profile.get_device().first<rs2::depth_sensor>().set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,false);
+	// MSJ comment out depth auto exposure
+	std::cout << "MSJ1" <<std::endl;
+	//pipe_profile.get_device().first<rs2::depth_sensor>().set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,false);
         pipe_profile.get_device().query_sensors()[1].set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,false);
-        // sensors.at(0).set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,false);
-        // sensors.at(0).set_option(rs2_option::RS2_OPTION_EXPOSURE,exposure_time);
+	auto range = pipe_profile.get_device().query_sensors()[1].get_option_range(RS2_OPTION_EXPOSURE);
+	std::cout << "MSJ2" <<std::endl;
+	float exp_time = exposure_time;
+	std::cout << "RGB Exposure range [" << range.min << "~ "<< range.max << "], with step:" << range.step << ", and current setting time: " << exp_time << std::endl;
+	pipe_profile.get_device().query_sensors()[1].set_option(RS2_OPTION_EXPOSURE, exp_time);
+	std::cout << "MSJ3" << std::endl;
+	//< MSJ
+
+        //sensors.at(1).set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,false);
+        //sensors.at(1).set_option(rs2_option::RS2_OPTION_EXPOSURE,exposure_time);
     }
     else
     {
@@ -299,12 +318,12 @@ int main(int argc, char **argv) {
         pipe_profile.get_device().query_sensors()[1].set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,true);
         /**
         sensors.at(0).set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,true);
+	// MSJ
         rs400::advanced_mode advnc_mode(selected_device);
         STAEControl ae_ctrl = advnc_mode.get_ae_control();
         ae_ctrl.meanIntensitySetPoint = ae_meanIntensitySetPoint;
         advnc_mode.set_ae_control(ae_ctrl);
-
-        */
+	*/
     }
     pipe.stop();
 
@@ -410,6 +429,33 @@ int main(int argc, char **argv) {
     std::cout << " Coeff = " << intrinsics_cam.coeffs[0] << ", " << intrinsics_cam.coeffs[1] << ", " <<
     intrinsics_cam.coeffs[2] << ", " << intrinsics_cam.coeffs[3] << ", " << intrinsics_cam.coeffs[4] << ", " << std::endl;
     std::cout << " Model = " << intrinsics_cam.model << std::endl;
+
+    // MSJ
+    sensor_msgs::CameraInfo camera_info;
+    camera_info.width = intrinsics_cam.width;
+    camera_info.height = intrinsics_cam.height;
+    camera_info.distortion_model = "plumb_bob";
+    camera_info.K[0] = intrinsics_cam.fx;
+    camera_info.K[4] = intrinsics_cam.fy;
+    camera_info.K[2] = intrinsics_cam.ppx;
+    camera_info.K[5] = intrinsics_cam.ppy;
+    camera_info.K[8] = 1.0;
+
+    camera_info.P[0] = intrinsics_cam.fx;
+    camera_info.P[5] = intrinsics_cam.fy;
+    camera_info.P[2] = intrinsics_cam.ppx;
+    camera_info.P[6] = intrinsics_cam.ppy;
+    camera_info.P[10] = 1.0;
+
+    camera_info.R[0] = 1.0;
+    camera_info.R[4] = 1.0;
+    camera_info.R[8] = 1.0;
+
+    camera_info.D.push_back(0.0);
+    camera_info.D.push_back(0.0);
+    camera_info.D.push_back(0.0);
+    camera_info.D.push_back(0.0);
+    camera_info.D.push_back(0.0);
 
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
@@ -665,9 +711,16 @@ int main(int argc, char **argv) {
         depth_msg = cv_bridge::CvImage(std_msgs::Header(), "mono16", depth).toImageMsg();
 	depth_msg->header.frame_id = "/camera_depth_optical_frame";
 
+	image_msg->header.stamp = depth_msg->header.stamp = ros::Time::now();
+
         pub_image.publish(image_msg);
         pub_image_feature.publish(image_feature_msg);
         pub_depth.publish(depth_msg);
+        
+        // MSJ
+        camera_info.header.stamp = image_msg->header.stamp;
+	camera_info.header.frame_id = "camera_color_optical_frame";
+	color_info_pub.publish(camera_info);
 
         // ***********************************************************************************
         // pub pointcloud

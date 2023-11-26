@@ -663,12 +663,12 @@ void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint>
 {
     // copy IMAGE
     cv::Mat temp_mat;
-    im.copyTo(temp_mat);
+    im.copyTo(im_feature);
     //std::cout<<"Convert Color"<<std::endl;
-    std::cout<<"shape : "<<im.channels()<<std::endl;
-    cv::cvtColor(im, temp_mat, cv::COLOR_BGR2GRAY);
+    //std::cout<<"shape : "<<im.channels()<<std::endl;
+    //cv::cvtColor(im, temp_mat, cv::COLOR_BGR2GRAY);
 //	std::cout<<"here?"<<std::endl;
-    cv::cvtColor(temp_mat, im_feature, cv::COLOR_GRAY2BGR);
+    //cv::cvtColor(temp_mat, im_feature, cv::COLOR_GRAY2BGR);
 
     cv::Point2f point(100,100);
     // cv::circle(im_feature,point,2,cv::Scalar(0,255,0),-1);   

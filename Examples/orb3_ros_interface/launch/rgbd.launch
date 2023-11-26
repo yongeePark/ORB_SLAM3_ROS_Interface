@@ -5,7 +5,7 @@
     <arg name="path_to_settings" default="Examples/RGB-D/RealSense_D435i.yaml"/>
 
     <arg name="use_pangolin" default="false"/>
-    <arg name="use_auto_exposure" default="true"/>
+    <arg name="use_auto_exposure" default="false"/>
     <arg name="exposure_time" default="100"/>
     <!-- this will not be used when use_auto_exposure is false -->
     <arg name="ae_meanIntensitySetPoint" default="800"/>
