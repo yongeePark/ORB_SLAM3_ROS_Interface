@@ -191,6 +191,7 @@ int main(int argc, char **argv) {
 
     // MSJ
     ros::Publisher color_info_pub = nh.advertise<sensor_msgs::CameraInfo>("/camera/color/camera_info", 1);
+    ros::Publisher depth_info_pub = nh.advertise<sensor_msgs::CameraInfo>("/camera/depth/camera_info", 1);
     
 
 
@@ -410,12 +411,7 @@ int main(int argc, char **argv) {
 
     pipe_profile = pipe.start(cfg, imu_callback);
 
-
-
     rs2::stream_profile cam_stream = pipe_profile.get_stream(RS2_STREAM_COLOR);
-
-
-
 
     rs2_intrinsics intrinsics_cam = cam_stream.as<rs2::video_stream_profile>().get_intrinsics();
     width_img = intrinsics_cam.width;
@@ -431,31 +427,62 @@ int main(int argc, char **argv) {
     std::cout << " Model = " << intrinsics_cam.model << std::endl;
 
     // MSJ
-    sensor_msgs::CameraInfo camera_info;
-    camera_info.width = intrinsics_cam.width;
-    camera_info.height = intrinsics_cam.height;
-    camera_info.distortion_model = "plumb_bob";
-    camera_info.K[0] = intrinsics_cam.fx;
-    camera_info.K[4] = intrinsics_cam.fy;
-    camera_info.K[2] = intrinsics_cam.ppx;
-    camera_info.K[5] = intrinsics_cam.ppy;
-    camera_info.K[8] = 1.0;
+    sensor_msgs::CameraInfo color_info;
+    color_info.width = intrinsics_cam.width;
+    color_info.height = intrinsics_cam.height;
+    color_info.distortion_model = "plumb_bob";
+    color_info.K[0] = intrinsics_cam.fx;
+    color_info.K[4] = intrinsics_cam.fy;
+    color_info.K[2] = intrinsics_cam.ppx;
+    color_info.K[5] = intrinsics_cam.ppy;
+    color_info.K[8] = 1.0;
 
-    camera_info.P[0] = intrinsics_cam.fx;
-    camera_info.P[5] = intrinsics_cam.fy;
-    camera_info.P[2] = intrinsics_cam.ppx;
-    camera_info.P[6] = intrinsics_cam.ppy;
-    camera_info.P[10] = 1.0;
+    color_info.P[0] = intrinsics_cam.fx;
+    color_info.P[5] = intrinsics_cam.fy;
+    color_info.P[2] = intrinsics_cam.ppx;
+    color_info.P[6] = intrinsics_cam.ppy;
+    color_info.P[10] = 1.0;
 
-    camera_info.R[0] = 1.0;
-    camera_info.R[4] = 1.0;
-    camera_info.R[8] = 1.0;
+    color_info.R[0] = 1.0;
+    color_info.R[4] = 1.0;
+    color_info.R[8] = 1.0;
 
-    camera_info.D.push_back(0.0);
-    camera_info.D.push_back(0.0);
-    camera_info.D.push_back(0.0);
-    camera_info.D.push_back(0.0);
-    camera_info.D.push_back(0.0);
+    color_info.D.push_back(0.0);
+    color_info.D.push_back(0.0);
+    color_info.D.push_back(0.0);
+    color_info.D.push_back(0.0);
+    color_info.D.push_back(0.0);
+
+    rs2::stream_profile depth_stream = pipe_profile.get_stream(RS2_STREAM_DEPTH);
+    
+
+    rs2_intrinsics intrinsics_depth = depth_stream.as<rs2::video_stream_profile>().get_intrinsics();
+
+    sensor_msgs::CameraInfo depth_info;
+    depth_info.width = intrinsics_depth.width;
+    depth_info.height = intrinsics_depth.height;
+    depth_info.distortion_model = "plumb_bob";
+    depth_info.K[0] = intrinsics_depth.fx;
+    depth_info.K[4] = intrinsics_depth.fy;
+    depth_info.K[2] = intrinsics_depth.ppx;
+    depth_info.K[5] = intrinsics_depth.ppy;
+    depth_info.K[8] = 1.0;
+
+    depth_info.P[0] = intrinsics_depth.fx;
+    depth_info.P[5] = intrinsics_depth.fy;
+    depth_info.P[2] = intrinsics_depth.ppx;
+    depth_info.P[6] = intrinsics_depth.ppy;
+    depth_info.P[10] = 1.0;
+
+    depth_info.R[0] = 1.0;
+    depth_info.R[4] = 1.0;
+    depth_info.R[8] = 1.0;
+
+    depth_info.D.push_back(0.0);
+    depth_info.D.push_back(0.0);
+    depth_info.D.push_back(0.0);
+    depth_info.D.push_back(0.0);
+    depth_info.D.push_back(0.0);
 
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
@@ -503,11 +530,11 @@ int main(int argc, char **argv) {
             if(!image_ready)
                 cond_image_rec.wait(lk);
 
-#ifdef COMPILEDWITHC11
-            std::chrono::steady_clock::time_point time_Start_Process = std::chrono::steady_clock::now();
-#else
-            std::chrono::monotonic_clock::time_point time_Start_Process = std::chrono::monotonic_clock::now();
-#endif
+//#ifdef COMPILEDWITHC11
+ //           std::chrono::steady_clock::time_point time_Start_Process = std::chrono::steady_clock::now();
+//#else
+   //         std::chrono::monotonic_clock::time_point time_Start_Process = std::chrono::monotonic_clock::now();
+//#endif
 
 
             start = std::chrono::steady_clock::now();
@@ -546,6 +573,7 @@ int main(int argc, char **argv) {
         //cv::imshow("depth image",depth);
         if(imageScale != 1.f)
         {
+		/*
 #ifdef REGISTER_TIMES
     #ifdef COMPILEDWITHC11
             std::chrono::steady_clock::time_point t_Start_Resize = std::chrono::steady_clock::now();
@@ -553,11 +581,12 @@ int main(int argc, char **argv) {
             std::chrono::monotonic_clock::time_point t_Start_Resize = std::chrono::monotonic_clock::now();
     #endif
 #endif
+*/
             int width = im.cols * imageScale;
             int height = im.rows * imageScale;
             cv::resize(im, im, cv::Size(width, height));
             cv::resize(depth, depth, cv::Size(width, height));
-
+/*
 #ifdef REGISTER_TIMES
     #ifdef COMPILEDWITHC11
             std::chrono::steady_clock::time_point t_End_Resize = std::chrono::steady_clock::now();
@@ -567,8 +596,9 @@ int main(int argc, char **argv) {
             t_resize = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(t_End_Resize - t_Start_Resize).count();
             SLAM.InsertResizeTime(t_resize);
 #endif
+*/
         }
-
+/*
 #ifdef REGISTER_TIMES
     #ifdef COMPILEDWITHC11
         std::chrono::steady_clock::time_point t_Start_Track = std::chrono::steady_clock::now();
@@ -576,6 +606,7 @@ int main(int argc, char **argv) {
         std::chrono::monotonic_clock::time_point t_Start_Track = std::chrono::monotonic_clock::now();
     #endif
 #endif
+*/
         // Pass the image to the SLAM system
         output = SLAM.TrackRGBD(im, depth, timestamp); //, vImuMeas); depthCV
         
@@ -704,23 +735,27 @@ int main(int argc, char **argv) {
         DrawFeature(im_feature,im,keypoints,imageScale,mvbVO,mvbMap);
 
         image_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im).toImageMsg();
-	image_msg->header.frame_id = "/camera_depth_optical_frame";
+	    image_msg->header.frame_id = "/camera_depth_optical_frame";
 	
         image_feature_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im_feature).toImageMsg();
 
         depth_msg = cv_bridge::CvImage(std_msgs::Header(), "mono16", depth).toImageMsg();
-	depth_msg->header.frame_id = "/camera_depth_optical_frame";
+	    depth_msg->header.frame_id = "/camera_depth_optical_frame";
 
-	image_msg->header.stamp = depth_msg->header.stamp = ros::Time::now();
+	    image_msg->header.stamp = depth_msg->header.stamp = ros::Time::now();
 
         pub_image.publish(image_msg);
         pub_image_feature.publish(image_feature_msg);
         pub_depth.publish(depth_msg);
         
         // MSJ
-        camera_info.header.stamp = image_msg->header.stamp;
-	camera_info.header.frame_id = "camera_color_optical_frame";
-	color_info_pub.publish(camera_info);
+        color_info.header.stamp = image_msg->header.stamp;
+	    color_info.header.frame_id = "camera_depth_optical_frame";
+	    color_info_pub.publish(color_info);
+
+        depth_info.header.stamp = image_msg->header.stamp;
+	    depth_info.header.frame_id = "camera_depth_optical_frame";
+	    depth_info_pub.publish(depth_info);
 
         // ***********************************************************************************
         // pub pointcloud

@@ -98,26 +98,30 @@ int main(int argc, char **argv)
             cv::resize(imD, imD, cv::Size(width, height));
         }
 
+/*
 #ifdef COMPILEDWITHC11
         std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
 #else
         std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
 #endif
+*/
 
         // Pass the image to the SLAM system
         SLAM.TrackRGBD(imRGB,imD,tframe);
-
+/*
 #ifdef COMPILEDWITHC11
         std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
 #else
         std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
 #endif
+*/
 
-        double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
+        //double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
 
-        vTimesTrack[ni]=ttrack;
+        //vTimesTrack[ni]=ttrack;
 
         // Wait to load the next frame
+	/*
         double T=0;
         if(ni<nImages-1)
             T = vTimestamps[ni+1]-tframe;
@@ -126,6 +130,7 @@ int main(int argc, char **argv)
 
         if(ttrack<T)
             usleep((T-ttrack)*1e6);
+	*/
     }
 
     // Stop all threads

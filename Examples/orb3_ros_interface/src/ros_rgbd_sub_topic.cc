@@ -237,7 +237,7 @@ int main(int argc, char **argv) {
     sigaction(SIGINT, &sigIntHandler, NULL);
     b_continue_session = true;
 
-    double offset = 0; // ms
+    //double offset = 0; // ms
 
     /*
     rs2::context ctx;

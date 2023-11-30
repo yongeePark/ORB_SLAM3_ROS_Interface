@@ -69,6 +69,7 @@ ${PROJECT_SOURCE_DIR}/../../lib/libORB_SLAM3.so
 message(realsense_dir : ${realsense2_INCLUDE_DIR})
 message(realsense_lib : ${realsense2_LIBRARY})
 
+message(OpenCV version : ${OpenCV_LIBS})
 include_directories(${PROJECT_NAME}
 ${realsense2_INCLUDE_DIR}
 # ${realsense-gl_INCLUDE_DIR}
