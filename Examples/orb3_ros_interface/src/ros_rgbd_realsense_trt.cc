@@ -49,6 +49,9 @@
 #include <pcl/point_types.h>
 #include <pcl_ros/point_cloud.h>
 
+#include <tf_conversions/tf_eigen.h>
+#include <tf/transform_broadcaster.h>
+
 #include <System.h>
 
 #include <fstream>
@@ -745,6 +748,7 @@ int main(int argc, char **argv) {
     vector<Eigen::Matrix<float,3,1>> local_points;
 
     rs2::frameset processed;
+    static tf::TransformBroadcaster br;
     while (!SLAM.isShutDown() && ros::ok())
     {
         {
@@ -895,6 +899,17 @@ int main(int argc, char **argv) {
         // current_pose.pose.orientation.x = 
         pose_pub.publish(current_pose);
         odom_pub.publish(current_odom);
+
+        tf::Transform transform;
+        transform.setOrigin(tf::Vector3(current_pose.pose.position.x,
+                                        current_pose.pose.position.y,
+                                        current_pose.pose.position.z));
+        tf::Quaternion q_transform(q.x(),q.y(),q.z(),q.w());
+        transform.setRotation(q_transform);
+        
+        br.sendTransform(tf::StampedTransform(transform, ros::Time::now(),"map", "base_link"));
+
+
         // show output
         if(ros::ok() && print_index >  5 )
         {
