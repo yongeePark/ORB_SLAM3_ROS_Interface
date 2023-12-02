@@ -30,7 +30,7 @@ endif()
 
 LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/../../../cmake_modules)
 
-find_package(OpenCV 4.6.0 REQUIRED)
+find_package(OpenCV 4.5.5 REQUIRED)
 # find_package(OpenCV 3.2 REQUIRED)
 # if(NOT OpenCV_FOUND)
 #     message(WARNING "OpenCV 4.4.0 is not found")

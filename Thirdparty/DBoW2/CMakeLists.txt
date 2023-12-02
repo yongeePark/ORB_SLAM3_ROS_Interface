@@ -29,7 +29,7 @@ set(SRCS_DUTILS
   DUtils/Timestamp.cpp)
 
 
-find_package(OpenCV 4.6 REQUIRED)
+find_package(OpenCV 4.5 REQUIRED)
 if(NOT OpenCV_FOUND)
       message(FATAL_ERROR "OpenCV = 4.6 not found.")
 endif()

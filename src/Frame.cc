@@ -1064,8 +1064,8 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
     thread threadRight(&Frame::ExtractORB,this,1,imRight,static_cast<KannalaBrandt8*>(mpCamera2)->mvLappingArea[0],static_cast<KannalaBrandt8*>(mpCamera2)->mvLappingArea[1]);
 
     // jaeyong
-    threadLeft.detach()
-    threadRight.detach()
+    //threadLeft.detach();
+    //threadRight.detach();
 
     // threadLeft.join();
     // threadRight.join();
