@@ -48,6 +48,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_types.h>
 #include <pcl_ros/point_cloud.h>
+#include <pcl_ros/transforms.h>
 
 #include <tf_conversions/tf_eigen.h>
 #include <tf/transform_broadcaster.h>
@@ -71,8 +72,10 @@ void* g_deviceInput;
 void* g_deviceOutput;
 
 void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint> keypoints, float imageScale, vector<bool> mvbVO,vector<bool> mvbMap);
+// void PublishPointCloud(vector<Eigen::Matrix<float,3,1>>& global_points, vector<Eigen::Matrix<float,3,1>>& local_points,
+// ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub);
 void PublishPointCloud(vector<Eigen::Matrix<float,3,1>>& global_points, vector<Eigen::Matrix<float,3,1>>& local_points,
-ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub);
+ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub,Eigen::Quaternionf& q, Sophus::SE3f& current_base_pose);
 bool b_continue_session;
 
 
@@ -548,9 +551,11 @@ int main(int argc, char **argv) {
 // for image handling
     image_transport::ImageTransport it(nh);
     image_transport::Publisher pub_image         = it.advertise("/camera/color/image_raw", 1);
+    image_transport::Publisher pub_image_origin  = it.advertise("/camera/color/image_raw_origin", 1);
     image_transport::Publisher pub_image_feature = it.advertise("/orb3_feature_image", 1);
     image_transport::Publisher pub_depth         = it.advertise("/camera/depth/image_rect_raw", 1);
     sensor_msgs::ImagePtr image_msg;
+    sensor_msgs::ImagePtr image_origin_msg;
     sensor_msgs::ImagePtr image_feature_msg;
     sensor_msgs::ImagePtr depth_msg;
 
@@ -797,6 +802,8 @@ int main(int argc, char **argv) {
         // rs2::depth_frame depth_frame = fs.get_depth_frame();
 
         im = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
+        //im_origin = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
+        im_origin = im.clone();
         //im_feature = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
         depth = cv::Mat(cv::Size(width_img, height_img), CV_16U, (void*)(depth_frame.get_data()), cv::Mat::AUTO_STEP);
 
@@ -943,10 +950,12 @@ int main(int argc, char **argv) {
         DrawFeature(im_feature,im,keypoints,imageScale,mvbVO,mvbMap);
 
         image_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im).toImageMsg();
+        image_origin_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im_origin).toImageMsg();
         image_feature_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im_feature).toImageMsg();
         depth_msg = cv_bridge::CvImage(std_msgs::Header(), "mono16", depth).toImageMsg();
 
         pub_image.publish(image_msg);
+        pub_image_origin.publish(image_origin_msg);
         pub_image_feature.publish(image_feature_msg);
         pub_depth.publish(depth_msg);
 
@@ -956,7 +965,7 @@ int main(int argc, char **argv) {
         // local_points.clear();
         SLAM.GetPointCloud(global_points,local_points);
 
-        PublishPointCloud(global_points,local_points,global_pc_pub,local_pc_pub);
+        PublishPointCloud(global_points,local_points,global_pc_pub,local_pc_pub,q,current_base_pose);
 
 
         
@@ -1067,10 +1076,11 @@ void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint>
 }
 
 void PublishPointCloud(vector<Eigen::Matrix<float,3,1>>& global_points, vector<Eigen::Matrix<float,3,1>>& local_points,
-ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub)
+ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub,Eigen::Quaternionf& q, Sophus::SE3f& current_base_pose)
 {
     pcl::PointCloud<pcl::PointXYZ>::Ptr global_pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::PointCloud<pcl::PointXYZ>::Ptr local_pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::PointCloud<pcl::PointXYZ>::Ptr local_tf_pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
 
     //global
     // std::cout<<"global_points size : "<<global_points.size()<<std::endl;
@@ -1094,12 +1104,35 @@ ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub)
     }
     sensor_msgs::PointCloud2 global_map_msg;
     sensor_msgs::PointCloud2 local_map_msg;
+
+    Eigen::Matrix4f pose_rot = Eigen::Matrix4f::Identity();
+ 
+ 
+ 
+    Eigen::Matrix3f matrix_trans =
+    Eigen::Quaternionf(q.w(), q.x(), q.y(),q.z())
+        .toRotationMatrix();
+    pose_rot.block(0, 0, 3, 3) = matrix_trans;
+
+    pose_rot(0, 3) = current_base_pose.translation()(0,0);
+    pose_rot(1, 3) = current_base_pose.translation()(1,0);
+    pose_rot(2, 3) = current_base_pose.translation()(2,0);
+
+
+    // local should be transformed!
+    pcl::transformPointCloud(*local_pointcloud, *local_tf_pointcloud, pose_rot.inverse());
+
+
     pcl::toROSMsg(*global_pointcloud,global_map_msg);
-    pcl::toROSMsg(*local_pointcloud,local_map_msg);
+    pcl::toROSMsg(*local_tf_pointcloud,local_map_msg);
     
     global_map_msg.header.frame_id = "map";
     global_map_msg.header.stamp = ros::Time::now();
     global_pc_pub.publish(global_map_msg);
+
+    
+    
+
     
     local_map_msg.header.frame_id = "map";
     local_map_msg.header.stamp = ros::Time::now();
