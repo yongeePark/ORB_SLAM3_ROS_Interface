@@ -36,6 +36,7 @@ int main(int argc, char **argv)
 {
     if(argc != 5)
     {
+        std::cout<<"argc : "<<argc<<std::endl;
         cerr << endl <<"Number of arguments : "<< argc << "Usage: ./rgbd_tum path_to_vocabulary path_to_settings path_to_sequence path_to_association" << endl;
         return 1;
     }
@@ -98,34 +99,21 @@ int main(int argc, char **argv)
             cv::resize(imD, imD, cv::Size(width, height));
         }
 
-#ifdef COMPILEDWITHC11
-        std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
-#else
-        std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
-#endif
-
         // Pass the image to the SLAM system
         SLAM.TrackRGBD(imRGB,imD,tframe);
+        // double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
 
-#ifdef COMPILEDWITHC11
-        std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
-#else
-        std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
-#endif
-
-        double ttrack= std::chrono::duration_cast<std::chrono::duration<double> >(t2 - t1).count();
-
-        vTimesTrack[ni]=ttrack;
+        // vTimesTrack[ni]=ttrack;
 
         // Wait to load the next frame
-        double T=0;
-        if(ni<nImages-1)
-            T = vTimestamps[ni+1]-tframe;
-        else if(ni>0)
-            T = tframe-vTimestamps[ni-1];
+        // double T=0;
+        // if(ni<nImages-1)
+        //     T = vTimestamps[ni+1]-tframe;
+        // else if(ni>0)
+        //     T = tframe-vTimestamps[ni-1];
 
-        if(ttrack<T)
-            usleep((T-ttrack)*1e6);
+        // if(ttrack<T)
+        //     usleep((T-ttrack)*1e6);
     }
 
     // Stop all threads
@@ -171,7 +159,6 @@ void LoadImages(const string &strAssociationFilename, vector<string> &vstrImageF
             ss >> t;
             ss >> sD;
             vstrImageFilenamesD.push_back(sD);
-
         }
     }
 }

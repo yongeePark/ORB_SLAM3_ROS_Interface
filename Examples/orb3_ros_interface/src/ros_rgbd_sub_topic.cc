@@ -15,7 +15,6 @@
 * You should have received a copy of the GNU General Public License along with ORB-SLAM3.
 * If not, see <http://www.gnu.org/licenses/>.
 */
-//ff
 #include <signal.h>
 #include <stdlib.h>
 #include <iostream>
@@ -169,7 +168,7 @@ int main(int argc, char **argv) {
     ros::Rate loop_rate(15);
     // for image handling
     image_transport::ImageTransport it(nh);
-    image_transport::Publisher pub_image         = it.advertise("/camera/color/image_raw_from_orb", 1);
+    image_transport::Publisher pub_image         = it.advertise(ros::this_node::getName()+"/camera/color/image_raw_from_orb", 1);
     image_transport::Publisher pub_image_feature = it.advertise("/orb3_feature_image_from_orb", 1);
     image_transport::Publisher pub_depth         = it.advertise("/camera/depth/image_raw_from_orb", 1);
     sensor_msgs::ImagePtr image_msg;
@@ -179,9 +178,9 @@ int main(int argc, char **argv) {
     // image_transport::Subscriber sub_rgb   = it.subscribe("/camera/color/image_raw", 1,            boost::bind(imageCallback, _1, _2));
     // image_transport::Subscriber sub_depth = it.subscribe("/camera/depth_registered/image_raw", 1, boost::bind(imageCallback, _1, _3));
 
-    message_filters::Subscriber<sensor_msgs::Image> rgb_sub(nh,"/camera/color/image_raw", 1);
+    message_filters::Subscriber<sensor_msgs::Image> rgb_sub(nh,"/camera/color/image_raw", 10);
     // message_filters::Subscriber<sensor_msgs::Image> depth_sub(nh,"/camera/aligned_depth_to_color/image_raw", 1);
-    message_filters::Subscriber<sensor_msgs::Image> depth_sub(nh,"/camera/depth/image_rect_raw", 1);
+    message_filters::Subscriber<sensor_msgs::Image> depth_sub(nh,"/camera/depth/image_rect_raw", 10);
     typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> MySyncPolicy;
 
 
@@ -191,14 +190,14 @@ int main(int argc, char **argv) {
     g_nodename = ros::this_node::getName();
     // ros param setting
     bool enable_pangolin;
-    if (!nh_param.getParam("/rgbd_sub_topic/enable_pangolin",enable_pangolin))
+    if (!nh_param.getParam(g_nodename+"/enable_pangolin",enable_pangolin))
     {
         std::cout<<"It has not been decided whether to use Pangolin."<<std::endl
         <<"shut down the program"<<std::endl;
         return 1;
     }
     bool enable_auto_exposure;
-    if (!nh_param.getParam("/rgbd_sub_topic/enable_auto_exposure",enable_auto_exposure))
+    if (!nh_param.getParam(g_nodename+"/enable_auto_exposure",enable_auto_exposure))
     {
         std::cout<<"It has not been decided whether to use auto_exposure."<<std::endl
         <<"shut down the program"<<std::endl;
@@ -207,7 +206,7 @@ int main(int argc, char **argv) {
     int ae_meanIntensitySetPoint;
     if(enable_auto_exposure)
     {
-    if (!nh_param.getParam("/rgbd_sub_topic/ae_meanIntensitySetPoint",ae_meanIntensitySetPoint))
+    if (!nh_param.getParam(g_nodename+"/ae_meanIntensitySetPoint",ae_meanIntensitySetPoint))
     {
         std::cout<<"It has not been decided the number of the mean Intensity Set Point."<<std::endl
         <<"shut down the program"<<std::endl;
@@ -470,12 +469,12 @@ int main(int argc, char **argv) {
             int height = im.rows * imageScale;
             cv::resize(im, im, cv::Size(width, height));
             cv::resize(depth, depth, cv::Size(width, height));
-
         }
 
         // Pass the image to the SLAM system
         // ******************************************************************************
         // output = SLAM.TrackRGBD(im, depth, timestamp); //, vImuMeas); depthCV
+
         output = SLAM.TrackRGBD(g_new_color_image, g_new_depth_image, timestamp); //, vImuMeas); depthCV
         // ******************************************************************************
 
@@ -516,7 +515,11 @@ int main(int argc, char **argv) {
         pose_pub.publish(current_pose);
         odom_pub.publish(current_odom);
         
-                // Publish image
+        // if(current_pose.pose.position.x == 0 && current_pose.pose.position.y == 0 && current_pose.pose.position.z == 0)
+        // {
+        //     std::cout<<"SLAM Failure!"<<std::endl;
+        // }
+        // Publish image
         
         // reference! DO NOT UNCOMMENT BELOW 2 LINES!!!
         //im = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
@@ -529,14 +532,17 @@ int main(int argc, char **argv) {
 
 
         SLAM.GetVOandMap(mvbVO,mvbMap);
-        DrawFeature(im_feature,g_new_color_image,keypoints,imageScale,mvbVO,mvbMap);
 
+
+
+        DrawFeature(im_feature,g_new_color_image,keypoints,imageScale,mvbVO,mvbMap);
+        im = g_new_color_image;
         image_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im).toImageMsg();
         image_feature_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im_feature).toImageMsg();
         depth_msg = cv_bridge::CvImage(std_msgs::Header(), "mono16", depth).toImageMsg();
 
         // draw features in the image
-        // pub_image.publish(image_msg);
+        pub_image.publish(image_msg);
         pub_image_feature.publish(image_feature_msg);
         // pub_depth.publish(depth_msg);
 
@@ -775,7 +781,11 @@ void imageCallback(const sensor_msgs::ImageConstPtr& rgb_image, const sensor_msg
   // Display RGB and depth images
   g_new_color_image = cv_rgb_ptr->image;
   g_new_depth_image = cv_depth_ptr->image;
+//   cv::resize(g_new_color_image, g_new_color_image, cv::Size(640, 480));
+//   cv::resize(g_new_depth_image, g_new_depth_image, cv::Size(640, 480));
 
+  // convert from rgb to bgr
+  cv::cvtColor(g_new_color_image, g_new_color_image, cv::COLOR_RGB2BGR);
   std::cout<<"Node : "<<g_nodename<<std::endl
   <<"Number of callback function call : "<<callback_count<<std::endl;
 }

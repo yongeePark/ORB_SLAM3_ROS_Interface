@@ -4,16 +4,12 @@
     <arg name="path_to_vocabulary" default="Vocabulary/ORBvoc.txt"/>
     <arg name="path_to_settings" default="Examples/RGB-D/RealSense_D435i.yaml"/>
 
-    <arg name="path_to_dataset" default="/home/usrg/nn_image_conversion/OfficialDataset/eth3d/test/"/>
-    <arg name="dataset_name" default="boxes"/>
-
     <arg name="use_pangolin" default="true"/>
     <arg name="use_auto_exposure" default="true"/>
     <arg name="ae_meanIntensitySetPoint" default="1000"/>
 
-    <node name="rgbd_realsense" pkg="orb3_ros_interface" type="rgbd_realsense" output="screen"
-    args="$(arg path_to_orb)$(arg path_to_vocabulary) $(arg path_to_orb)$(arg path_to_settings) $(arg path_to_dataset)$(arg path_to_settings) $(arg path_to_dataset)$(arg dataset_name)/associated.txt" >
-
+    <node name="RGBD" pkg="orb3_ros_interface" type="RGBD" output="screen"
+    args="$(arg path_to_orb)$(arg path_to_vocabulary) $(arg path_to_orb)$(arg path_to_settings)" >
       <remap from="/orb_pose" to="/scout/mavros/vision_pose/pose"/>
       <param name="enable_pangolin" type="bool" value="$(arg use_pangolin)" />
       <param name="enable_auto_exposure" type="bool" value="$(arg use_auto_exposure)" />

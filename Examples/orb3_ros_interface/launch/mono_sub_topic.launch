@@ -16,7 +16,7 @@
       <param name="enable_auto_exposure" type="bool" value="$(arg use_auto_exposure)" />
       <param name="ae_meanIntensitySetPoint" type="int" value="$(arg ae_meanIntensitySetPoint)" />
 
-      <remap from="/camera/color/image_raw" to="/camera/image_conversed"/> 
+      <!-- <remap from="/camera/color/image_raw" to="/camera/image_conversed"/>  -->
       <!-- <remap from="/camera/depth_registered/image_raw" to="/camera/depth/image_rect_raw"/>
       <remap from="/camera/rgb/image_raw" to="/camera/color/image_raw"/> -->
     </node>

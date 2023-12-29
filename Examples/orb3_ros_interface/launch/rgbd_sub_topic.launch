@@ -22,6 +22,7 @@
 
       <!-- reconstructed images -->
       <remap from="/camera/color/image_raw" to="/camera/image_conversed"/> 
+      
       <remap from="/orb_odom" to="/orb_odom_conversion"/>
       <!--<remap from="/camera/depth/image_rect_raw" to="/camera/depth/image_rect_raw"/> -->
     </node>

@@ -59,6 +59,7 @@
 
 using namespace std;
 
+std::string g_nodename;
 cv::Mat g_new_color_image, g_new_depth_image;
 void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint> keypoints, float imageScale, vector<bool> mvbVO,vector<bool> mvbMap);
 void PublishPointCloud(vector<Eigen::Matrix<float,3,1>>& global_points, vector<Eigen::Matrix<float,3,1>>& local_points,
@@ -165,6 +166,7 @@ int main(int argc, char **argv) {
     ros::Publisher global_pc_pub = nh.advertise<sensor_msgs::PointCloud2>("/ORB3/globalmap",1);
     ros::Publisher  local_pc_pub = nh.advertise<sensor_msgs::PointCloud2>("/ORB3/localmap",1);
 
+    ros::Rate loop_rate(15);
     // for image handling
     image_transport::ImageTransport it(nh);
     image_transport::Publisher pub_image         = it.advertise("/camera/color/image_raw_from_orb", 1);
@@ -744,7 +746,6 @@ void imageCallback(const sensor_msgs::ImageConstPtr& rgb_image, const sensor_msg
 
 void rgbimageCallback(const sensor_msgs::ImageConstPtr& rgb_image)
 {
-    std::cout<<"Image Callback!"<<std::endl;
   // Convert RGB image to cv::Mat format
   cv_bridge::CvImagePtr cv_rgb_ptr;
   try

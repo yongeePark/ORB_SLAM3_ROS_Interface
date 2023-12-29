@@ -4,8 +4,8 @@
     <arg name="path_to_vocabulary" default="Vocabulary/ORBvoc.txt"/>
     
     <!-- realsense -->
-    <arg name="path_to_settings" default="Examples/orb3_ros_interface/config/RealSense_D435i.yaml"/>
-    <!-- <arg name="path_to_settings" default="Examples/orb3_ros_interface/config/ETH3D.yaml"/> -->
+    <!-- <arg name="path_to_settings" default="Examples/orb3_ros_interface/config/RealSense_D435i.yaml"/> -->
+    <arg name="path_to_settings" default="Examples/orb3_ros_interface/config/ETH3D.yaml"/>
 
     <arg name="use_pangolin" default="false"/>
     <arg name="use_auto_exposure" default="true"/>
@@ -26,16 +26,12 @@
       <remap from="/orb_odom" to="/orb_odom_conversion"/>
       <remap from="/ORB3/globalmap" to="/ORB3_Conversion/globalmap"/> 
       <remap from="/ORB3/localmap"  to="/ORB3_Conversion/localmap"/> 
-
-      <!-- <remap from="/orb3_feature_image_from_orb" to="/orb3_feature_image_processed"/> -->
-
-      
-      
+      <remap from="/orb3_feature_image_from_orb" to="/orb3_feature_image_processed"/>
     </node>
 
 
     <!-- originanl node -->
-    
+
     <node name="rgbd_sub_topic_original" pkg="orb3_ros_interface" type="rgbd_sub_topic" output="screen"
     args="$(arg path_to_orb)$(arg path_to_vocabulary) $(arg path_to_orb)$(arg path_to_settings)" >
       <remap from="/orb_pose" to="/scout/mavros/vision_pose/pose_original"/>
@@ -46,8 +42,41 @@
       <param name="ae_meanIntensitySetPoint" type="int" value="$(arg ae_meanIntensitySetPoint)" />
 
       <remap from="/orb3_feature_image_from_orb" to="/orb3_feature_image_original"/> 
-    </node>
-   
+    </node> 
+
+   <!-- CLAHE node -->
+
+  <node name="rgbd_sub_topic_clahe" pkg="orb3_ros_interface" type="rgbd_sub_topic" output="screen"
+    args="$(arg path_to_orb)$(arg path_to_vocabulary) $(arg path_to_orb)$(arg path_to_settings)" >
+    <remap from="/orb_pose" to="/scout/mavros/vision_pose/pose_clahe"/>
+    <remap from="/camera/depth/image_rect_raw" to="/camera/aligned_depth_to_color/image_raw"/>
+
+    <param name="enable_pangolin" type="bool" value="$(arg use_pangolin)" />
+    <param name="enable_auto_exposure" type="bool" value="$(arg use_auto_exposure)" />
+    <param name="ae_meanIntensitySetPoint" type="int" value="$(arg ae_meanIntensitySetPoint)" />
+
+    <remap from="/camera/color/image_raw" to="/camera/image_clahe"/> 
+    <remap from="/orb_odom" to="/orb_odom_clahe"/>
+    <remap from="/orb3_feature_image_from_orb" to="/orb3_feature_image_clahe"/> 
+  </node>
+
+  <!-- image brighten ros -->
+
+<!--   
+  <node name="rgbd_sub_topic_image_bright" pkg="orb3_ros_interface" type="rgbd_sub_topic" output="screen"
+    args="$(arg path_to_orb)$(arg path_to_vocabulary) $(arg path_to_orb)$(arg path_to_settings)" >
+    <remap from="/orb_pose" to="/scout/mavros/vision_pose/pose_brighten"/>
+    <remap from="/camera/depth/image_rect_raw" to="/camera/aligned_depth_to_color/image_raw"/>
+
+    <param name="enable_pangolin" type="bool" value="$(arg use_pangolin)" />
+    <param name="enable_auto_exposure" type="bool" value="$(arg use_auto_exposure)" />
+    <param name="ae_meanIntensitySetPoint" type="int" value="$(arg ae_meanIntensitySetPoint)" />
+
+    <remap from="/camera/color/image_raw" to="/camera/color/image_raw/bright"/> 
+    <remap from="/orb_odom" to="/orb_odom_bright"/>
+    <remap from="/orb3_feature_image_from_orb" to="/orb3_feature_image_bright"/> 
+  </node> -->
+
 
 
 </launch>

@@ -454,7 +454,7 @@ int main(int argc, char **argv) {
     vector<Eigen::Matrix<float,3,1>> local_points;
 
     
-
+    bool check_failure = 0;
 
 
     while (!SLAM.isShutDown() && ros::ok())
@@ -463,12 +463,6 @@ int main(int argc, char **argv) {
             std::unique_lock<std::mutex> lk(imu_mutex);
             if(!image_ready)
                 cond_image_rec.wait(lk);
-
-#ifdef COMPILEDWITHC11
-            std::chrono::steady_clock::time_point time_Start_Process = std::chrono::steady_clock::now();
-#else
-            std::chrono::monotonic_clock::time_point time_Start_Process = std::chrono::monotonic_clock::now();
-#endif
 
             fs = fsSLAM;
 
@@ -494,42 +488,14 @@ int main(int argc, char **argv) {
         //im_feature = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
         depth = cv::Mat(cv::Size(width_img, height_img), CV_16U, (void*)(depth_frame.get_data()), cv::Mat::AUTO_STEP);
 
-        /*cv::Mat depthCV_8U;
-        depthCV.convertTo(depthCV_8U,CV_8U,0.01);
-        cv::imshow("depth image", depthCV_8U);*/
-        //cv::imshow("depth image",depth);
         if(imageScale != 1.f)
         {
-#ifdef REGISTER_TIMES
-    #ifdef COMPILEDWITHC11
-            std::chrono::steady_clock::time_point t_Start_Resize = std::chrono::steady_clock::now();
-    #else
-            std::chrono::monotonic_clock::time_point t_Start_Resize = std::chrono::monotonic_clock::now();
-    #endif
-#endif
             int width = im.cols * imageScale;
             int height = im.rows * imageScale;
             cv::resize(im, im, cv::Size(width, height));
             cv::resize(depth, depth, cv::Size(width, height));
-
-#ifdef REGISTER_TIMES
-    #ifdef COMPILEDWITHC11
-            std::chrono::steady_clock::time_point t_End_Resize = std::chrono::steady_clock::now();
-    #else
-            std::chrono::monotonic_clock::time_point t_End_Resize = std::chrono::monotonic_clock::now();
-    #endif
-            t_resize = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(t_End_Resize - t_Start_Resize).count();
-            SLAM.InsertResizeTime(t_resize);
-#endif
         }
 
-#ifdef REGISTER_TIMES
-    #ifdef COMPILEDWITHC11
-        std::chrono::steady_clock::time_point t_Start_Track = std::chrono::steady_clock::now();
-    #else
-        std::chrono::monotonic_clock::time_point t_Start_Track = std::chrono::monotonic_clock::now();
-    #endif
-#endif
         // Pass the image to the SLAM system
         output = SLAM.TrackRGBD(im, depth, timestamp); //, vImuMeas); depthCV
 
