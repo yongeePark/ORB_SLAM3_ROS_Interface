@@ -32,6 +32,10 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_types.h>
 #include <pcl_ros/point_cloud.h>
+#include <pcl_ros/transforms.h>
+
+#include <tf_conversions/tf_eigen.h>
+#include <tf/transform_broadcaster.h>
 
 #include <System.h>
 
@@ -39,15 +43,185 @@
 #include <message_filters/time_synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 
+#include <fstream>
+#include <NvInfer.h>
+#include <NvOnnxParser.h>
+#include <cuda_runtime.h>
+#include <opencv2/cudawarping.hpp>
+#include <opencv2/cudaarithm.hpp>
+
+#include <thread>
+
+using namespace nvinfer1;
 using namespace std;
+// using namespace cudawrapper;
+
+void* g_deviceInput;
+void* g_deviceOutput;
 
 std::string g_nodename;
 cv::Mat g_new_color_image, g_new_depth_image;
+
 void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint> keypoints, float imageScale, vector<bool> mvbVO,vector<bool> mvbMap);
+// void PublishPointCloud(vector<Eigen::Matrix<float,3,1>>& global_points, vector<Eigen::Matrix<float,3,1>>& local_points,
+// ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub);
 void PublishPointCloud(vector<Eigen::Matrix<float,3,1>>& global_points, vector<Eigen::Matrix<float,3,1>>& local_points,
-ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub);
+ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub,Eigen::Quaternionf& q, Sophus::SE3f& current_base_pose);
 void imageCallback(const sensor_msgs::ImageConstPtr& rgb_image, const sensor_msgs::ImageConstPtr& depth_image);
 bool b_continue_session;
+bool g_image_ready = false;
+
+
+//tensorRT
+using namespace nvinfer1;
+class Logger : public nvinfer1::ILogger
+{
+public:
+    void log(Severity severity, const char* msg) noexcept override
+    {
+        // You can customize the logging behavior here
+        if (severity != Severity::kINFO)
+        {
+            // std::cout << "TensorRT Logger: " << msg << std::endl;
+
+        }
+    }
+};
+static Logger gLogger;
+// Function to read an ONNX model file and create a TensorRT engine
+ICudaEngine* createEngine(const std::string& onnxModelPath, int maxBatchSize)
+{
+    IBuilder* builder = createInferBuilder(gLogger);
+    INetworkDefinition* network = builder->createNetworkV2(1U << static_cast<uint32_t>(NetworkDefinitionCreationFlag::kEXPLICIT_BATCH));
+    nvonnxparser::IParser* parser = nvonnxparser::createParser(*network, gLogger);
+                                    // nvonnxparser::createParser(*network, gLogger)
+
+    if (!parser->parseFromFile(onnxModelPath.c_str(), static_cast<int>(ILogger::Severity::kWARNING)))
+    {
+        // gLogger.getTRTLogger() << "Error parsing ONNX file" << std::endl;
+        return nullptr;
+    }
+
+    builder->setMaxBatchSize(maxBatchSize);
+    // builder->setMaxWorkspaceSize(1 << 30);
+    nvinfer1::IOptimizationProfile* profile = builder->createOptimizationProfile();
+    profile->setDimensions("input", OptProfileSelector::kMIN, Dims4(1, 1, 480, 640));
+
+    profile->setDimensions("input", OptProfileSelector::kOPT, Dims4(1, 1, 480, 640));
+    profile->setDimensions("input", OptProfileSelector::kMAX, Dims4(1, 1, 480, 640));
+
+
+
+    // ICudaEngine* engine = builder->buildCudaEngine(*network);
+    IBuilderConfig* buildConfig = builder->createBuilderConfig();
+    buildConfig->setMaxWorkspaceSize(1 << 30);
+    buildConfig->addOptimizationProfile(profile);
+    ICudaEngine* engine = builder->buildEngineWithConfig(*network, *buildConfig);
+
+    if (!engine)
+    {
+        // gLogger.getTRTLogger() << "Error building TensorRT engine" << std::endl;
+        std::cout<<"Error occuered while building engine"<<std::endl;
+        return nullptr;
+    }
+
+    parser->destroy();
+    network->destroy();
+    // builder->destroy();
+
+    return engine;
+}
+
+bool doInference(IExecutionContext* context, cv::Mat& input, cv::Mat& output,size_t inputSize,size_t outputSize)
+{
+
+    cudaMemcpy(g_deviceInput, input.data, inputSize, cudaMemcpyHostToDevice);
+
+    // Execute the TensorRT engine
+    // context->execute(1, &deviceInput, &deviceOutput);
+    void* buffers[] = {g_deviceInput, g_deviceOutput};
+    context->executeV2(buffers);
+
+    // Copy output data from GPU to host
+    cudaMemcpy(output.data, g_deviceOutput, outputSize, cudaMemcpyDeviceToHost);
+
+    return true;
+}
+// Functions for mutlithreading : notused
+void processFrames(rs2::align align, rs2::frameset fs, rs2::frameset& processedFrames) {
+    // Process frames
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+    processedFrames = align.process(fs);
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    std::chrono::duration<double> dt = end - start;
+    long long dt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
+    std::cout<<"align dt : "<<dt_ms<<std::endl;
+}
+
+void inferenceFrames(IExecutionContext* context,rs2::frameset fs, cv::Mat& im, cv::Mat& im_origin, size_t inputSize, size_t outputSize) {
+    // Extract color and depth frames from frameset
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+    rs2::video_frame color_frame = fs.get_color_frame();
+    //rs2::depth_frame depth_frame = fs.get_depth_frame();
+
+    // Convert frames to OpenCV Mat
+    im = cv::Mat(cv::Size(640, 480), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
+    im_origin = im;
+    //cv::Mat depth = cv::Mat(cv::Size(width_img, height_img), CV_16U, (void*)(depth_frame.get_data()), cv::Mat::AUTO_STEP);
+
+    // Convert color image to YUV
+    cv::Mat img1f;
+    im.convertTo(img1f, CV_32FC3, 1/255.0);
+    cv::Mat imgyuv;
+    cv::cvtColor(img1f, imgyuv, cv::COLOR_BGR2YCrCb);
+
+    std::vector<cv::Mat> channels;
+    cv::split(imgyuv, channels);
+
+    // Perform inference on the Y channel
+    cv::Mat infer_input = channels[0];
+    cv::Mat infer_output(480, 640, CV_32FC1);
+    infer_input = infer_input * 2.0 - 1.0;
+
+    // Perform inference
+    std::chrono::steady_clock::time_point before_infer = std::chrono::steady_clock::now();
+    if(doInference(context, infer_input, infer_output, inputSize, outputSize))
+    {
+        std::cout<<"Success"<<std::endl;
+    }
+    else
+    {
+        std::cout<<"Fail"<<std::endl;
+    }
+    
+
+    std::chrono::steady_clock::time_point after_infer = std::chrono::steady_clock::now();
+    channels[0] = infer_output*0.5 + 0.5;
+    cv::Mat imyuv_output, im_32f;
+    cv::merge(channels, imyuv_output);
+
+    cv::cvtColor(imyuv_output,im_32f,cv::COLOR_YCrCb2BGR);
+    im_32f.convertTo(im, CV_8UC3, 255);
+    
+    std::chrono::steady_clock::time_point process_time = std::chrono::steady_clock::now();
+    std::chrono::duration<double> dt = process_time - start;
+    long long dt_ms1 = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
+
+    std::chrono::duration<double> dt2 = before_infer - start;
+    long long dt_ms2 = std::chrono::duration_cast<std::chrono::milliseconds>(dt2).count();
+
+    std::chrono::duration<double> dt3 = after_infer - before_infer;
+    long long dt_ms3 = std::chrono::duration_cast<std::chrono::milliseconds>(dt3).count();
+
+    std::chrono::duration<double> dt4 = process_time - after_infer;
+    long long dt_ms4 = std::chrono::duration_cast<std::chrono::milliseconds>(dt4).count();
+    std::cout<<"process time1 : "<<dt_ms1<<std::endl;
+    std::cout<<"process time2 : "<<dt_ms2<<std::endl;
+    std::cout<<"process time3 : "<<dt_ms3<<std::endl;
+    std::cout<<"process time4 : "<<dt_ms4<<std::endl;
+
+}
+
 
 void exit_loop_handler(int s){
     cout << "Finishing session" << endl;
@@ -106,11 +280,13 @@ static rs2_option get_sensor_option(const rs2::sensor& sensor)
     return static_cast<rs2_option>(selected_sensor_option);
 }
 
+
+
+
+
 int main(int argc, char **argv) {
 
-
     // ros
-
     ros::init(argc, argv,"ros_rgbd_realsense");
     ros::NodeHandle nh;
     ros::NodeHandle nh_param("~");
@@ -120,17 +296,7 @@ int main(int argc, char **argv) {
     ros::Publisher  local_pc_pub = nh.advertise<sensor_msgs::PointCloud2>("/ORB3/localmap",1);
 
     ros::Rate loop_rate(15);
-    // for image handling
-    image_transport::ImageTransport it(nh);
-    image_transport::Publisher pub_image         = it.advertise("/camera/color/image_raw_from_orb", 1);
-    image_transport::Publisher pub_image_feature = it.advertise("/orb3_feature_image_from_orb", 1);
-    image_transport::Publisher pub_depth         = it.advertise("/camera/depth/image_raw_from_orb", 1);
-    sensor_msgs::ImagePtr image_msg;
-    sensor_msgs::ImagePtr image_feature_msg;
-    sensor_msgs::ImagePtr depth_msg;
-    
-    // image_transport::Subscriber sub_rgb   = it.subscribe("/camera/color/image_raw", 1,            boost::bind(imageCallback, _1, _2));
-    // image_transport::Subscriber sub_depth = it.subscribe("/camera/depth_registered/image_raw", 1, boost::bind(imageCallback, _1, _3));
+
 
     message_filters::Subscriber<sensor_msgs::Image> rgb_sub(nh,"/camera/color/image_raw", 1);
     // message_filters::Subscriber<sensor_msgs::Image> depth_sub(nh,"/camera/aligned_depth_to_color/image_raw", 1);
@@ -141,17 +307,17 @@ int main(int argc, char **argv) {
     message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(1000),rgb_sub, depth_sub);
     sync.registerCallback(boost::bind(&imageCallback, _1, _2));
 
-    g_nodename = ros::this_node::getName();
-    // ros param setting
+    string nodename = ros::this_node::getName();
+
     bool enable_pangolin;
-    if (!nh_param.getParam("/rgbd_sub_topic/enable_pangolin",enable_pangolin))
+    if (!nh_param.getParam(nodename+"/enable_pangolin",enable_pangolin))
     {
         std::cout<<"It has not been decided whether to use Pangolin."<<std::endl
         <<"shut down the program"<<std::endl;
         return 1;
     }
     bool enable_auto_exposure;
-    if (!nh_param.getParam("/rgbd_sub_topic/enable_auto_exposure",enable_auto_exposure))
+    if (!nh_param.getParam(nodename+"/enable_auto_exposure",enable_auto_exposure))
     {
         std::cout<<"It has not been decided whether to use auto_exposure."<<std::endl
         <<"shut down the program"<<std::endl;
@@ -160,24 +326,75 @@ int main(int argc, char **argv) {
     int ae_meanIntensitySetPoint;
     if(enable_auto_exposure)
     {
-    if (!nh_param.getParam("/rgbd_sub_topic/ae_meanIntensitySetPoint",ae_meanIntensitySetPoint))
+        if (!nh_param.getParam(nodename+"/ae_meanIntensitySetPoint",ae_meanIntensitySetPoint))
+        {
+            std::cout<<"It has not been decided the number of the mean Intensity Set Point."<<std::endl
+            <<"shut down the program"<<std::endl;
+            return 1;
+        }
+    }
+    
+    std::string onnx_path;
+    if (!nh_param.getParam(nodename+"/path_to_onnx",onnx_path))
     {
-        std::cout<<"It has not been decided the number of the mean Intensity Set Point."<<std::endl
+        std::cout<<"Please set onnx path."<<std::endl
         <<"shut down the program"<<std::endl;
         return 1;
     }
+
+    std::string onnxModelPath = onnx_path;
+
+    // 2. from trt
+    IRuntime* runtime = createInferRuntime(gLogger);
+
+    std::ifstream engineFile(onnxModelPath, std::ios::binary);
+    if (!engineFile) {
+        std::cerr << "Failed to open engine file." << std::endl;
+        return 1;
     }
-    
+    engineFile.seekg(0, engineFile.end);
+    size_t engineSize = engineFile.tellg();
+    engineFile.seekg(0, engineFile.beg);
 
-    
+    std::vector<char> engineData(engineSize);
+    engineFile.read(engineData.data(), engineSize);
+    engineFile.close();
 
-    bool bFileName = false;
+    nvinfer1::ICudaEngine* engine = runtime->deserializeCudaEngine(engineData.data(), engineSize, nullptr);
+    IExecutionContext* context = engine->createExecutionContext();
+
+    cv::Mat temp_mat(480, 640, CV_32FC1);
+
+
+    size_t inputSize = temp_mat.total() * temp_mat.elemSize();
+    size_t outputSize = temp_mat.total() * temp_mat.elemSize();
+
+    cudaMalloc(&g_deviceInput, inputSize);
+    cudaMalloc(&g_deviceOutput, outputSize);
+
+
+    std::cout<<"ONNX model is uploaded"<<std::endl;
+
+    std::cout<<"\ntensorrt uploading is done"<<std::endl;
+
+// for image handling
+    image_transport::ImageTransport it(nh);
+    image_transport::Publisher pub_image         = it.advertise("/c_camera/color/image_raw", 1);
+    image_transport::Publisher pub_image_origin  = it.advertise("/c_camera/color/image_raw_origin", 1);
+    image_transport::Publisher pub_image_feature = it.advertise("/orb3_feature_image", 1);
+    image_transport::Publisher pub_image_diff    = it.advertise("/c_camera/color/image_raw_diff", 1);
+    image_transport::Publisher pub_depth         = it.advertise("/c_camera/depth/image_rect_raw", 1);
+    sensor_msgs::ImagePtr image_msg;
+    sensor_msgs::ImagePtr image_origin_msg;
+    sensor_msgs::ImagePtr image_diff_msg;
+    sensor_msgs::ImagePtr image_feature_msg;
+    sensor_msgs::ImagePtr depth_msg;
+
+
     string file_name;
 
     if (argc == 4) {
         file_name = string(argv[argc - 1]);
-        bFileName = true;
-        cout<<"file_name : "<<file_name<<endl;
     }
 
     struct sigaction sigIntHandler;
@@ -189,20 +406,24 @@ int main(int argc, char **argv) {
     sigaction(SIGINT, &sigIntHandler, NULL);
     b_continue_session = true;
 
-    double offset = 0; // ms
 
     /*
     rs2::context ctx;
     rs2::device_list devices = ctx.query_devices();
     rs2::device selected_device;
+
+    
+
+
     if (devices.size() == 0)
     {
         std::cerr << "No device connected, please connect a RealSense device" << std::endl;
         return 0;
     }
     else
+    {
         selected_device = devices[0];
-
+    }
     std::vector<rs2::sensor> sensors = selected_device.query_sensors();
     int index = 0;
     // We can now iterate the sensors and print their names
@@ -211,7 +432,6 @@ int main(int argc, char **argv) {
             ++index;
             if (index == 1) {
                 sensor.set_option(RS2_OPTION_ENABLE_AUTO_EXPOSURE, 1);
-                //sensor.set_option(RS2_OPTION_AUTO_EXPOSURE_LIMIT,50000);
                 sensor.set_option(RS2_OPTION_EMITTER_ENABLED, 1); // emitter on for depth information
             }
             // std::cout << "  " << index << " : " << sensor.get_info(RS2_CAMERA_INFO_NAME) << std::endl;
@@ -230,23 +450,13 @@ int main(int argc, char **argv) {
 
     // Declare RealSense pipeline, encapsulating the actual device and sensors
     rs2::pipeline pipe;
-
-    // Create a configuration for configuring the pipeline with a non default profile
     rs2::config cfg;
 
     // RGB stream
-    cfg.enable_stream(RS2_STREAM_COLOR,640, 480, RS2_FORMAT_RGB8, 30);
+    cfg.enable_stream(RS2_STREAM_COLOR,640, 480, RS2_FORMAT_RGB8, 15);
+    cfg.enable_stream(RS2_STREAM_DEPTH,640, 480, RS2_FORMAT_Z16, 15);
 
-    // Depth stream
-    // cfg.enable_stream(RS2_STREAM_INFRARED, 1, 640, 480, RS2_FORMAT_Y8, 30);
-    cfg.enable_stream(RS2_STREAM_DEPTH,640, 480, RS2_FORMAT_Z16, 30);
 
-    // IMU stream
-    cfg.enable_stream(RS2_STREAM_ACCEL, RS2_FORMAT_MOTION_XYZ32F); //, 250); // 63
-    cfg.enable_stream(RS2_STREAM_GYRO, RS2_FORMAT_MOTION_XYZ32F); //, 400);
-    */
-
-    /*
     // IMU callback
     std::mutex imu_mutex;
     std::condition_variable cond_image_rec;
@@ -256,9 +466,6 @@ int main(int argc, char **argv) {
     vector<double> v_gyro_timestamp;
     vector<rs2_vector> v_gyro_data;
 
-    double prev_accel_timestamp = 0;
-    rs2_vector prev_accel_data;
-    double current_accel_timestamp = 0;
     rs2_vector current_accel_data;
     vector<double> v_accel_timestamp_sync;
     vector<rs2_vector> v_accel_data_sync;
@@ -272,6 +479,8 @@ int main(int argc, char **argv) {
     // start and stop just to get necessary profile
     rs2::pipeline_profile pipe_profile = pipe.start(cfg);
 
+    
+    
     if(enable_auto_exposure == false)
     {
         pipe_profile.get_device().first<rs2::depth_sensor>().set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,false);
@@ -284,14 +493,17 @@ int main(int argc, char **argv) {
         pipe_profile.get_device().query_sensors()[1].set_option(rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE,true);
     }
 
-    */
+
     // set AE
 
-    /*
     pipe.stop();
+
+
     rs2_stream align_to = find_stream_to_align(pipe_profile.get_streams());
+
     rs2::align align(align_to);
     rs2::frameset fsSLAM;
+
 
     auto imu_callback = [&](const rs2::frame& frame)
     {
@@ -315,25 +527,7 @@ int main(int argc, char **argv) {
                 align = rs2::align(align_to);
             }
 
-            //Align depth and rgb takes long time, move it out of the interruption to avoid losing IMU measurements
             fsSLAM = fs;
-
-            // *
-            //Get processed aligned frame
-            auto processed = align.process(fuse_pangolin continue iteration
-            if (!depth_frame || !color_frame) {
-                cout << "Not synchronized depth and image\n";
-                return;
-            }argv
-
-
-            imCV = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
-            depthCV = cv::Mat(cv::Size(width_img, height_img), CV_16U, (void*)(depth_frame.get_data()), cv::Mat::AUTO_STEP);
-
-            cv::Mat depthCV_8U;
-            depthCV.convertTo(depthCV_8U,CV_8U,0.01);
-            cv::imshow("depth image", depthCV_8U);
-            // *
 
             timestamp_image = fs.get_timestamp()*1e-3;
             image_ready = true;
@@ -360,32 +554,21 @@ int main(int argc, char **argv) {
     rs2_intrinsics intrinsics_cam = cam_stream.as<rs2::video_stream_profile>().get_intrinsics();
     width_img = intrinsics_cam.width;
     height_img = intrinsics_cam.height;
-    std::cout << " fx = " << intrinsics_cam.fx << std::endl;
-    std::cout << " fy = " << intrinsics_cam.fy << std::endl;
-    std::cout << " cx = " << intrinsics_cam.ppx << std::endl;
-    std::cout << " cy = " << intrinsics_cam.ppy << std::endl;
-    std::cout << " height = " << intrinsics_cam.height << std::endl;
-    std::cout << " width = " << intrinsics_cam.width << std::endl;
-    std::cout << " Coeff = " << intrinsics_cam.coeffs[0] << ", " << intrinsics_cam.coeffs[1] << ", " <<
-    intrinsics_cam.coeffs[2] << ", " << intrinsics_cam.coeffs[3] << ", " << intrinsics_cam.coeffs[4] << ", " << std::endl;
-    std::cout << " Model = " << intrinsics_cam.model << std::endl;
     */
 
-    // Create SLAM system. It initializes all system threads and gets ready to process frames.
 
-    
+
+    // Create SLAM system. It initializes all system threads and gets ready to process frames.
     ORB_SLAM3::System SLAM(argv[1],argv[2],ORB_SLAM3::System::RGBD, enable_pangolin, 0, file_name);
     float imageScale = SLAM.GetImageScale();
 
     double timestamp;
-    cv::Mat im, depth, im_feature;
+    cv::Mat im, depth, im_feature, im_origin, im_diff;
 
-    
     rs2::frameset fs;
 
     Sophus::SE3f output;
     
-    // Eigen::Matrix4f current_camera_pose, current_base_pose;
     Eigen::Matrix4f changer;
 
     changer <<  0.0f,  0.0f,  1.0f,  0.0f,
@@ -401,26 +584,81 @@ int main(int argc, char **argv) {
     vector<Eigen::Matrix<float,3,1>> global_points;
     vector<Eigen::Matrix<float,3,1>> local_points;
 
-
+    // rs2::frameset processed;
+    static tf::TransformBroadcaster br;
     while (!SLAM.isShutDown() && ros::ok())
     {
-        ros::spinOnce(); // this is to get new image!
-        // ros::spinOnce;
+        ros::spinOnce();
 
-        if(imageScale != 1.f)
+        if(!g_image_ready)
         {
-            int width = im.cols * imageScale;
-            int height = im.rows * imageScale;
-            cv::resize(im, im, cv::Size(width, height));
-            cv::resize(depth, depth, cv::Size(width, height));
-
+            loop_rate.sleep();
+            continue;
         }
 
+        im = g_new_color_image.clone();
+        std::cout<<"image type : "<<im.type()<<std::endl;
+        // cv::imshow("color",im);
+        // cv::waitKey(10);
+        // im = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
+        //im_origin = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
+        im_origin = im.clone();
+        //im_feature = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
+        //depth = cv::Mat(cv::Size(width_img, height_img), CV_16U, (void*)(depth_frame.get_data()), cv::Mat::AUTO_STEP);
+        depth = g_new_depth_image.clone();
+
         
+
+        std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+
+        cv::Mat img1f, imgyuv;
+        im.convertTo(img1f, CV_32FC3, 1/255.0);
+        cv::cvtColor(img1f,imgyuv,cv::COLOR_BGR2YCrCb);
+        std::vector<cv::Mat> channels;
+        cv::split(imgyuv, channels);
+
+
+        // ********************************************************************
+        cv::Mat infer_input = channels[0];
+        cv::Mat infer_output(480, 640, CV_32FC1);
+        infer_input = infer_input * 2.0 - 1.0;
+        // Perform inference
+        std::chrono::steady_clock::time_point before_infer = std::chrono::steady_clock::now();
+
+        if (!doInference(context, infer_input, infer_output, inputSize, outputSize))
+        {
+            std::cout<<"Fail to inference"<<std::endl;
+        }
+        g_image_ready = false;
+        std::chrono::steady_clock::time_point after_infer = std::chrono::steady_clock::now();
+        channels[0] = infer_output*0.5 + 0.5;
+        cv::Mat imyuv_output, im_32f;
+        cv::merge(channels, imyuv_output);
+
+        cv::cvtColor(imyuv_output,im_32f,cv::COLOR_YCrCb2BGR);
+        im_32f.convertTo(im, CV_8UC3, 255);
+        std::chrono::steady_clock::time_point process_time = std::chrono::steady_clock::now();
+        std::chrono::duration<double> dt = process_time - start;
+        long long dt_ms1 = std::chrono::duration_cast<std::chrono::milliseconds>(dt).count();
+
+        std::chrono::duration<double> dt2 = before_infer - start;
+        long long dt_ms2 = std::chrono::duration_cast<std::chrono::milliseconds>(dt2).count();
+
+        std::chrono::duration<double> dt3 = after_infer - before_infer;
+        long long dt_ms3 = std::chrono::duration_cast<std::chrono::milliseconds>(dt3).count();
+
+        std::chrono::duration<double> dt4 = process_time - after_infer;
+        long long dt_ms4 = std::chrono::duration_cast<std::chrono::milliseconds>(dt4).count();
+        // std::cout<<"Total processing : "<<dt_ms1<<std::endl;
+        // std::cout<<"Before inference : "<<dt_ms2<<std::endl;
+        // std::cout<<"during inference : "<<dt_ms3<<std::endl;
+        // std::cout<<"after inference  : "<<dt_ms4<<std::endl;
+
         // ******************************************************************************
-        output = SLAM.TrackRGBD(g_new_color_image, g_new_depth_image, timestamp); //, vImuMeas); depthCV
+        output = SLAM.TrackRGBD(im, depth, timestamp); //, vImuMeas); depthCV
         // ******************************************************************************
 
+        // ROS publish
         
         Eigen::Matrix4f current_camera_pose = output.inverse().matrix();
         Sophus::SE3f current_base_pose(changer * current_camera_pose);
@@ -449,104 +687,98 @@ int main(int argc, char **argv) {
         current_odom.pose.pose.orientation.z = q.z();
         current_odom.pose.pose.orientation.w = q.w();
 
+        // current_pose.pose.orientation.x = 
         pose_pub.publish(current_pose);
         odom_pub.publish(current_odom);
+
+        tf::Transform transform;
+        transform.setOrigin(tf::Vector3(current_pose.pose.position.x,
+                                        current_pose.pose.position.y,
+                                        current_pose.pose.position.z));
+        tf::Quaternion q_transform(q.x(),q.y(),q.z(),q.w());
+        transform.setRotation(q_transform);
         
+        br.sendTransform(tf::StampedTransform(transform, ros::Time::now(),"map", "base_link"));
+
+
+        // show output
+        if(ros::ok() && print_index >  5 )
+        {
+
+            std::cout<<"current pose"<<std::endl
+            
+            <<"x : "<<current_base_pose.translation()(0,0)<<std::endl
+            <<"y : "<<current_base_pose.translation()(1,0)<<std::endl
+            <<"z : "<<current_base_pose.translation()(2,0)<<std::endl
+
+            <<"========================"<<std::endl
+
+            << " quaternion(x,y,z,w) : "<<q.x() <<", "<<q.y()<<", "<<q.z() <<", "<<q.w()<< std::endl;
+            print_index=0;
+        }
                 // Publish image
         
         // reference! DO NOT UNCOMMENT BELOW 2 LINES!!!
         //im = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
-        //depth = cv::Mat(cv::Size(width_img, heightdepth_registered_img), CV_16U, (void*)(depth_frame.get_data()), cv::Mat::AUTO_STEP);
+        //depth = cv::Mat(cv::Size(width_img, height_img), CV_16U, (void*)(depth_frame.get_data()), cv::Mat::AUTO_STEP);
+
+        // draw features in the image
+
         std::vector<cv::KeyPoint> keypoints = SLAM.GetTrackedKeyPointsUn();
         vector<bool> mvbMap, mvbVO;
         int N = keypoints.size();
         mvbVO = vector<bool>(N,false);
         mvbMap = vector<bool>(N,false);
 
-
         SLAM.GetVOandMap(mvbVO,mvbMap);
-        DrawFeature(im_feature,g_new_color_image,keypoints,imageScale,mvbVO,mvbMap);
-
+        DrawFeature(im_feature,im,keypoints,imageScale,mvbVO,mvbMap);
+        cv::Mat im_mono, im_origin_mono;
+        cv::cvtColor(im,im_mono,cv::COLOR_BGR2GRAY);
+        cv::cvtColor(im_origin,im_origin_mono,cv::COLOR_BGR2GRAY);
+        cv::absdiff(im_mono,im_origin_mono,im_diff);
+        cv::convertScaleAbs(im_diff,im_diff);
         image_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im).toImageMsg();
+        image_origin_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im_origin).toImageMsg();
         image_feature_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im_feature).toImageMsg();
+        image_diff_msg = cv_bridge::CvImage(std_msgs::Header(), "mono8", im_diff).toImageMsg();
         depth_msg = cv_bridge::CvImage(std_msgs::Header(), "mono16", depth).toImageMsg();
 
-        // draw features in the image
-        // pub_image.publish(image_msg);
+        pub_image.publish(image_msg);
+        pub_image_origin.publish(image_origin_msg);
         pub_image_feature.publish(image_feature_msg);
-        // pub_depth.publish(depth_msg);
-
+        pub_image_diff.publish(image_diff_msg);
+        pub_depth.publish(depth_msg);
 
         // pub pointcloud
         vector<Eigen::Matrix<float,3,1>> global_points, local_points;
         SLAM.GetPointCloud(global_points,local_points);
-        PublishPointCloud(global_points,local_points,global_pc_pub,local_pc_pub);
+
+        PublishPointCloud(global_points,local_points,global_pc_pub,local_pc_pub,q,current_base_pose);
+
 
         
+        
+
+        print_index++;
         if (!ros::ok())
         {
             std::cout<<"ros shutdown!"<<std::endl;
             break;
         }
-        // show output
-        print_index++;
-        if(ros::ok() && print_index >  5 )
-        {
-            // Eigen::Matrix3f rotation_matrix = output.so3().matrix();
-            
-            // std::cout<<"translation vector : "<< output.translation()
-
-            /*
-            inline void getEulerAnglesFromQuaterniondepth_registered(const Eigen::Quaternion<double>& q,
-                                         Eigen::Vector3d* euler_angles) {
-            {
-                assert(euler_angles != NULL);
-
-                *euler_angles << std::atan2(2.0 * (q.w() * q.x() + q.y() * q.z()),
-                                    1.0 - 2.0 * (q.x() * q.x() + q.y() * q.y())),
-
-                    std::asin(2.0 * (q.w() * q.y() - q.z() * q.x())),
-
-                    std::atan2(2.0 * (q.w() * q.z() + q.x() * q.y()),
-                        1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
-                }
-            }
-            */
-            // rpy[0] = std::atan2(2.0 * (q.w() * q.x() + q.y() * q.z()),
-            //                         1.0 - 2.0 * (q.x() * q.x() + q.y() * q.y()));
-
-            // rpy[1] = std::asin(2.0 * (q.w() * q.y() - q.z() * q.x()));
-
-            // rpy[2] = std::atan2(2.0 * (q.w() * q.z() + q.x() * q.y()),
-            //             1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z()));
-
-
-            /*
-            std::cout<<"current pose"<<std::endl
-            
-            <<"x : "<<current_base_pose.translation()(0,0)<<std::endl
-            <<"y : "<<current_base_pose.translation()(1,0)<<std::endl
-            <<"z : "<<current_base_pose.translation()(2,0)<<std::endl;
-            */
-
-            // <<"========================"<<std::endl
-            //<<"translation vector : "<< current_camera_pose.translation() <<std::endl
-            // << " rotation : "<<rpy[0] <<", "<<rpy[1]<<", "<<rpy[2] << std::endl;
-            // << " quaternion(x,y,z,w) : "<<q.x() <<", "<<q.y()<<", "<<q.z() <<", "<<q.w()<< std::endl;
-            print_index=0;
-        }
+        loop_rate.sleep();
 
         // end of the loop
-        loop_rate.sleep();
     }
+
+    cudaFree(g_deviceInput);
+    cudaFree(g_deviceOutput);
+
+    context->destroy();
     cout << "System shutdown!\n";
 }
 
 rs2_stream find_stream_to_align(const std::vector<rs2::stream_profile>& streams)
 {
-    //Given a vector of streams, we try to find a depth stream and another stream to align depth with.
-    //We prioritize color streams to make the view look better.
-    //If color is not available, we take another stream that (other than depth)
     rs2_stream align_to = RS2_STREAM_ANY;
     bool depth_stream_found = false;
     bool color_stream_found = false;
@@ -601,21 +833,18 @@ void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint>
     cv::Point2f point(100,100);
     // cv::circle(im_feature,point,2,cv::Scalar(0,255,0),-1);   
 
-    // cv::circle(im_feature,point,3,cv::Scalar(0,255,0),2);
 
     
     std::vector<cv::KeyPoint> keypoints_ = keypoints;
     std::vector<bool>         vbVO = mvbVO;
     std::vector<bool>         vbMap = mvbMap;
-    // const float r = 5;
-    const int r = 5;
+    const float r = 5;
     int n = keypoints_.size();
-    // std::cout<<"keypoint size : "<<n<<std::endl;
+    
     for(int i=0;i<n;i++)
     {
         if(vbVO[i] || vbMap[i])
         {
-            
             cv::Point2f pt1,pt2;
             cv::Point2f point;
             
@@ -628,20 +857,22 @@ void DrawFeature(cv::Mat& im_feature, const cv::Mat im,std::vector<cv::KeyPoint>
             pt2.y=py+r;
             
             cv::rectangle(im_feature,pt1,pt2,cv::Scalar(0,255,0));
-            cv::circle(im_feature,point,2,cv::Scalar(0,255,0),1);
+            cv::circle(im_feature,point,2,cv::Scalar(0,255,0),-1);
         }
     }
     
 }
 
 void PublishPointCloud(vector<Eigen::Matrix<float,3,1>>& global_points, vector<Eigen::Matrix<float,3,1>>& local_points,
-ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub)
+ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub,Eigen::Quaternionf& q, Sophus::SE3f& current_base_pose)
 {
     pcl::PointCloud<pcl::PointXYZ>::Ptr global_pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::PointCloud<pcl::PointXYZ>::Ptr local_pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
+    pcl::PointCloud<pcl::PointXYZ>::Ptr local_tf_pointcloud(new pcl::PointCloud<pcl::PointXYZ>());
 
     //global
-    for(int i=0; i<global_points.size();i++)
+    // std::cout<<"global_points size : "<<global_points.size()<<std::endl;
+    for(int i=0; i<(int)global_points.size();i++)
     {
         pcl::PointXYZ pt;
         pt.x =  global_points[i](2,0);
@@ -650,7 +881,7 @@ ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub)
         global_pointcloud->points.push_back(pt);
     }
 
-    for(int i=0;i<local_points.size();i++)
+    for(int i=0;i<(int)local_points.size();i++)
     {
         pcl::PointXYZ pt;
         pt.x =  local_points[i](2,0);
@@ -661,12 +892,35 @@ ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub)
     }
     sensor_msgs::PointCloud2 global_map_msg;
     sensor_msgs::PointCloud2 local_map_msg;
+
+    Eigen::Matrix4f pose_rot = Eigen::Matrix4f::Identity();
+ 
+ 
+ 
+    Eigen::Matrix3f matrix_trans =
+    Eigen::Quaternionf(q.w(), q.x(), q.y(),q.z())
+        .toRotationMatrix();
+    pose_rot.block(0, 0, 3, 3) = matrix_trans;
+
+    pose_rot(0, 3) = current_base_pose.translation()(0,0);
+    pose_rot(1, 3) = current_base_pose.translation()(1,0);
+    pose_rot(2, 3) = current_base_pose.translation()(2,0);
+
+
+    // local should be transformed!
+    pcl::transformPointCloud(*local_pointcloud, *local_tf_pointcloud, pose_rot.inverse());
+
+
     pcl::toROSMsg(*global_pointcloud,global_map_msg);
-    pcl::toROSMsg(*local_pointcloud,local_map_msg);
+    pcl::toROSMsg(*local_tf_pointcloud,local_map_msg);
     
     global_map_msg.header.frame_id = "map";
     global_map_msg.header.stamp = ros::Time::now();
     global_pc_pub.publish(global_map_msg);
+
+    
+    
+
     
     local_map_msg.header.frame_id = "map";
     local_map_msg.header.stamp = ros::Time::now();
@@ -674,6 +928,7 @@ ros::Publisher& global_pc_pub, ros::Publisher& local_pc_pub)
 }
 void imageCallback(const sensor_msgs::ImageConstPtr& rgb_image, const sensor_msgs::ImageConstPtr& depth_image)
 {
+  if(!g_image_ready){g_image_ready=true;}
   // count variable
   static int callback_count = 0;
   callback_count++;
@@ -709,8 +964,10 @@ void imageCallback(const sensor_msgs::ImageConstPtr& rgb_image, const sensor_msg
   }
 
   // Display RGB and depth images
-  g_new_color_image = cv_rgb_ptr->image;
-  g_new_depth_image = cv_depth_ptr->image;
+  g_new_color_image = cv_rgb_ptr->image.clone();
+  cv::cvtColor(g_new_color_image, g_new_color_image, cv::COLOR_RGB2BGR);
+
+  g_new_depth_image = cv_depth_ptr->image.clone();
 
   std::cout<<"Node : "<<g_nodename<<std::endl
   <<"Number of callback function call : "<<callback_count<<std::endl;

@@ -150,3 +150,18 @@ ${PLUGIN_LIBS}
 ${CUDA_LIBRARIES}
 )
 set_target_properties(rgbd_trt PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/bin")
+
+rosbuild_add_executable(rgbd_sub_trt
+src/ros_rgbd_sub_topic_trt.cc
+# include/trtapi/engine.cpp
+)
+
+target_link_libraries(rgbd_sub_trt
+${LIBS}
+${realsense2_LIBRARY}
+${PCL_LIBRARIES}
+# PLUGIN_LIBSPLUGIN_LIBS
+${PLUGIN_LIBS}
+${CUDA_LIBRARIES}
+)
+set_target_properties(rgbd_sub_trt PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/bin")
