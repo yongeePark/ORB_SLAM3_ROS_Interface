@@ -192,7 +192,7 @@ int main(int argc, char **argv) {
     
     
 
-// for image handling
+    // for image handling
     image_transport::ImageTransport it(nh);
     image_transport::Publisher pub_image         = it.advertise("/camera/color/image_raw", 1);
     image_transport::Publisher pub_image_feature = it.advertise("/orb3_feature_image", 1);
@@ -200,6 +200,10 @@ int main(int argc, char **argv) {
     sensor_msgs::ImagePtr image_msg;
     sensor_msgs::ImagePtr image_feature_msg;
     sensor_msgs::ImagePtr depth_msg;
+
+    // MSJ
+    ros::Publisher color_info_pub = nh.advertise<sensor_msgs::CameraInfo>("/camera/color/camera_info", 1);
+    ros::Publisher depth_info_pub = nh.advertise<sensor_msgs::CameraInfo>("/camera/depth/camera_info", 1);
 
 
     string file_name;
@@ -417,6 +421,64 @@ int main(int argc, char **argv) {
     intrinsics_cam.coeffs[2] << ", " << intrinsics_cam.coeffs[3] << ", " << intrinsics_cam.coeffs[4] << ", " << std::endl;
     std::cout << " Model = " << intrinsics_cam.model << std::endl;
 
+    // MSJ
+    sensor_msgs::CameraInfo color_info;
+    color_info.width = intrinsics_cam.width;
+    color_info.height = intrinsics_cam.height;
+    color_info.distortion_model = "plumb_bob";
+    color_info.K[0] = intrinsics_cam.fx;
+    color_info.K[4] = intrinsics_cam.fy;
+    color_info.K[2] = intrinsics_cam.ppx;
+    color_info.K[5] = intrinsics_cam.ppy;
+    color_info.K[8] = 1.0;
+
+    color_info.P[0] = intrinsics_cam.fx;
+    color_info.P[5] = intrinsics_cam.fy;
+    color_info.P[2] = intrinsics_cam.ppx;
+    color_info.P[6] = intrinsics_cam.ppy;
+    color_info.P[10] = 1.0;
+
+    color_info.R[0] = 1.0;
+    color_info.R[4] = 1.0;
+    color_info.R[8] = 1.0;
+
+    color_info.D.push_back(0.0);
+    color_info.D.push_back(0.0);
+    color_info.D.push_back(0.0);
+    color_info.D.push_back(0.0);
+    color_info.D.push_back(0.0);
+
+    rs2::stream_profile depth_stream = pipe_profile.get_stream(RS2_STREAM_DEPTH);
+    
+
+    rs2_intrinsics intrinsics_depth = depth_stream.as<rs2::video_stream_profile>().get_intrinsics();
+
+    sensor_msgs::CameraInfo depth_info;
+    depth_info.width = intrinsics_depth.width;
+    depth_info.height = intrinsics_depth.height;
+    depth_info.distortion_model = "plumb_bob";
+    depth_info.K[0] = intrinsics_depth.fx;
+    depth_info.K[4] = intrinsics_depth.fy;
+    depth_info.K[2] = intrinsics_depth.ppx;
+    depth_info.K[5] = intrinsics_depth.ppy;
+    depth_info.K[8] = 1.0;
+
+    depth_info.P[0] = intrinsics_depth.fx;
+    depth_info.P[5] = intrinsics_depth.fy;
+    depth_info.P[2] = intrinsics_depth.ppx;
+    depth_info.P[6] = intrinsics_depth.ppy;
+    depth_info.P[10] = 1.0;
+
+    depth_info.R[0] = 1.0;
+    depth_info.R[4] = 1.0;
+    depth_info.R[8] = 1.0;
+
+    depth_info.D.push_back(0.0);
+    depth_info.D.push_back(0.0);
+    depth_info.D.push_back(0.0);
+    depth_info.D.push_back(0.0);
+    depth_info.D.push_back(0.0);
+
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
 
@@ -469,7 +531,9 @@ int main(int argc, char **argv) {
         {
             std::unique_lock<std::mutex> lk(imu_mutex);
             if(!image_ready)
+            {
                 cond_image_rec.wait(lk);
+            }
 
 // #ifdef COMPILEDWITHC11
 //             std::chrono::steady_clock::time_point time_Start_Process = std::chrono::steady_clock::now();
@@ -669,10 +733,23 @@ int main(int argc, char **argv) {
         image_feature_msg = cv_bridge::CvImage(std_msgs::Header(), "rgb8", im_feature).toImageMsg();
         depth_msg = cv_bridge::CvImage(std_msgs::Header(), "mono16", depth).toImageMsg();
 
+        // MSJ
+        image_msg->header.stamp = ros::Time::now();
+        image_msg->header.frame_id = "camera_color_optical_frame";
+
         // draw features in the image
         pub_image.publish(image_msg);
         pub_image_feature.publish(image_feature_msg);
         pub_depth.publish(depth_msg);
+
+        // MSJ
+        color_info.header.stamp = image_msg->header.stamp;
+	    color_info.header.frame_id = "camera_depth_optical_frame";
+	    color_info_pub.publish(color_info);
+
+        depth_info.header.stamp = image_msg->header.stamp;
+	    depth_info.header.frame_id = "camera_depth_optical_frame";
+	    depth_info_pub.publish(depth_info);
 
         // ***********************************************************************************
 

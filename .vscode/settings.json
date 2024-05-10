@@ -83,6 +83,12 @@
         "stack": "cpp",
         "core": "cpp",
         "specialfunctions": "cpp",
-        "*.ipp": "cpp"
+        "*.ipp": "cpp",
+        "bit": "cpp",
+        "codecvt": "cpp",
+        "future": "cpp",
+        "shared_mutex": "cpp",
+        "valarray": "cpp",
+        "variant": "cpp"
     }
 }
