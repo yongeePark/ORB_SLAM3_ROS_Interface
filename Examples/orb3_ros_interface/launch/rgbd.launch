@@ -5,10 +5,11 @@
     <arg name="path_to_settings" default="Examples/RGB-D/jetson.yaml"/>
 
     <arg name="use_pangolin" default="false"/>
-    <arg name="use_auto_exposure" default="false"/>
+    <arg name="use_auto_exposure" default="true"/>
     <arg name="ae_meanIntensitySetPoint" default="750"/>
 
     <arg name="cam_fps" default="15"/>
+    <arg name="cam_exposure" default="200"/>
 
     <node name="rgbd_realsense" pkg="orb3_ros_interface" type="rgbd_realsense" output="screen"
     args="$(arg path_to_orb)$(arg path_to_vocabulary) $(arg path_to_orb)$(arg path_to_settings)" >
@@ -18,6 +19,7 @@
       <param name="ae_meanIntensitySetPoint" type="int" value="$(arg ae_meanIntensitySetPoint)" />
 
       <param name="camera_fps" type="int" value="$(arg cam_fps)" />
+      <param name="exposure" type="int" value="$(arg cam_exposure)" />
 
       <!-- <remap from="/camera/depth_registered/image_raw" to="/camera/depth/image_rect_raw"/>
       <remap from="/camera/rgb/image_raw" to="/camera/color/image_raw"/> -->

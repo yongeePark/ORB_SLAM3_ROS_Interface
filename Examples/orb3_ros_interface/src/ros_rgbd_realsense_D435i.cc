@@ -190,7 +190,8 @@ int main(int argc, char **argv) {
         return 1;
     }
     
-    
+    int camera_exposure;
+    nh_param.getParam("/rgbd_realsense/exposure",camera_exposure);
 
     // for image handling
     image_transport::ImageTransport it(nh);
@@ -251,7 +252,7 @@ int main(int argc, char **argv) {
             get_sensor_option(sensor);
             if (index == 2){
                 // RGB camera
-                sensor.set_option(RS2_OPTION_EXPOSURE,80.f);
+                sensor.set_option(RS2_OPTION_EXPOSURE,camera_exposure);
 
             }
 
@@ -646,7 +647,7 @@ int main(int argc, char **argv) {
         //float rpy[3];
 
         current_pose.header.stamp = ros::Time::now();
-        current_pose.header.frame_id = "map";
+        current_pose.header.frame_id = "orb_odom"; // MSJ before map
         current_pose.pose.position.x = current_base_pose.translation()(0,0);
         current_pose.pose.position.y = current_base_pose.translation()(1,0);
         current_pose.pose.position.z = current_base_pose.translation()(2,0);
@@ -657,7 +658,7 @@ int main(int argc, char **argv) {
         current_pose.pose.orientation.w = q.w();
 
         current_odom.header.stamp = ros::Time::now();
-        current_odom.header.frame_id = "map";
+        current_odom.header.frame_id = "orb_odom"; // MSJ before map
         current_odom.pose.pose.position.x = current_base_pose.translation()(0,0);
         current_odom.pose.pose.position.y = current_base_pose.translation()(1,0);
         current_odom.pose.pose.position.z = current_base_pose.translation()(2,0);
